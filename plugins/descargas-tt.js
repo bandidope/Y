@@ -12,7 +12,7 @@ let handler = async (m, { conn, args, command }) => {
     await m.react('🍬')
 
     try {
-        // ←←← TU API PERSONAL rest.apicausas.xyz ←←←
+        // ←←← TU API Duarte bro rest.apicausas.xyz ←←←
         const apiUrl = `https://rest.apicausas.xyz/api/tiktok?url=${encodeURIComponent(url)}`
         const res = await fetch(apiUrl)
         const json = await res.json()
