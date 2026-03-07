@@ -18,8 +18,6 @@ let handler = async (m, { conn, args }) => {
         const res  = await fetch(`${API_BASE}?url=${encodeURIComponent(url)}&apikey=${API_KEY}`)
         const json = await res.json()
 
-        // DEBUG - borra esto cuando funcione
-        await m.reply(`🔍 *DEBUG:*\n\`\`\`${JSON.stringify(json, null, 2)}\`\`\``)
 
         if (!json.status || !json.data?.download?.url) throw new Error('No se encontró video')
 
