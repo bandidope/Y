@@ -1,6 +1,6 @@
 import fetch from 'node-fetch'
 
-const API_KEY  = 'causa-97b7d73b91acdc7a'
+const API_KEY  = 'causa-ec43262f206b3305'
 const API_BASE = 'https://rest.apicausas.xyz/api/tiktok'
 
 async function fetchTikTokData(url) {
