@@ -1,7 +1,7 @@
 import fetch from 'node-fetch'
 
 const API_KEY  = 'causa-ec43262f206b3305'
-const API_BASE = 'https://rest.apicausas.xyz/api/tiktok'
+const API_BASE = 'https://rest.apicausas.xyz/api/v1/descargas/tiktok'
 
 let handler = async (m, { conn, args }) => {
     let url = (args[0] || '').trim()
