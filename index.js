@@ -78,7 +78,7 @@ async function loadPlugins () {
     try {
       const filePath = path.join(pluginsDir, file)
       const plugin = (await import(`${filePath}?t=${Date.now()}`)).default
-      if (plugin?.command) {
+     if (plugin) {
         plugins.set(file, plugin)
         log.success(`Plugin cargado: ${file}`)
       }
