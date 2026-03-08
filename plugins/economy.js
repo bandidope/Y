@@ -14,7 +14,7 @@ try {
 
 const saveCoins = () => fs.writeFileSync(dataFile, JSON.stringify(coins, null, 2))
 
-let handler = async (m, { conn, command }) => {
+let handler = async (m, { command }) => {
     const userId = m.sender
     if (!coins[userId]) {
         coins[userId] = { balance: 100, lastChamba: 0 }
@@ -23,21 +23,15 @@ let handler = async (m, { conn, command }) => {
 
     await m.react('🍬')
 
-    // ====================== #saldo ======================
+    // #saldo
     if (command === 'saldo' || command === 'bal' || command === 'dinero') {
-        await conn.sendMessage(m.chat, {
-            text: `💗 *¡Tu saldo actual darling!* 🌸\n\n💰 *Monedas:* ${coins[userId].balance}`
-        }, { quoted: m })
-        return
+        return m.reply(`💗 *¡Tu saldo actual darling!* 🌸\n\n💰 *Monedas:* ${coins[userId].balance}`)
     }
 
-    // ====================== #chamba troll ======================
+    // #chamba troll
     if (command === 'chamba') {
         if (Date.now() - (coins[userId].lastChamba || 0) < 3600000) {
-            await conn.sendMessage(m.chat, {
-                text: '💔 Ya chambeaste hoy darling\~ vuelve en 1 hora no me dejes sola\~'
-            }, { quoted: m })
-            return
+            return m.reply('💔 Ya chambeaste hoy darling\~ vuelve en 1 hora no me dejes sola\~')
         }
 
         const ganancia = 120
@@ -45,10 +39,7 @@ let handler = async (m, { conn, command }) => {
         coins[userId].lastChamba = Date.now()
         saveCoins()
 
-        await conn.sendMessage(m.chat, {
-            text: `💗 *¡CHAMBA COMPLETADA DARLING!* 🌸\n\nLe chupas el pene a los creadores de la bot y ganas *${ganancia} monedas* 😂\n¡Zero Two aprueba este método troll! 💕\n\nSaldo actual: ${coins[userId].balance}`
-        }, { quoted: m })
-        return
+        return m.reply(`💗 *¡CHAMBA COMPLETADA DARLING!* 🌸\n\nLe chupas el pene a los creadores de la bot y ganas *${ganancia} monedas* 😂\n¡Zero Two aprueba este método troll! 💕\n\nSaldo actual: ${coins[userId].balance}`)
     }
 }
 
