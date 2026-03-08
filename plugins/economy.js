@@ -25,19 +25,13 @@ let handler = async (m, { conn, args, command }) => {
 
     // #saldo
     if (command === 'saldo' || command === 'bal' || command === 'dinero') {
-        await conn.sendMessage(m.chat, { 
-            text: `💗 *¡Tu saldo actual darling!* 🌸\n\n💰 *Monedas:* ${coins[userId].balance}` 
-        }, { quoted: m })
-        return
+        return m.reply(`💗 *¡Tu saldo actual darling!* 🌸\n\n💰 *Monedas:* ${coins[userId].balance}`)
     }
 
-    // #chamba (troll)
+    // #chamba troll
     if (command === 'chamba') {
         if (Date.now() - (coins[userId].lastChamba || 0) < 3600000) {
-            await conn.sendMessage(m.chat, { 
-                text: '💔 Ya chambeaste hoy darling\~ vuelve en 1 hora no me dejes sola\~' 
-            }, { quoted: m })
-            return
+            return m.reply('💔 Ya chambeaste hoy darling\~ vuelve en 1 hora no me dejes sola\~')
         }
 
         const ganancia = 120
@@ -45,66 +39,42 @@ let handler = async (m, { conn, args, command }) => {
         coins[userId].lastChamba = Date.now()
         saveCoins()
 
-        await conn.sendMessage(m.chat, { 
-            text: `💗 *¡CHAMBA COMPLETADA DARLING!* 🌸\n\nLe chupas el pene a los creadores de la bot y ganas *${ganancia} monedas* 😂\n¡Zero Two aprueba este método troll! 💕\n\nSaldo actual: ${coins[userId].balance}` 
-        }, { quoted: m })
-        return
+        return m.reply(`💗 *¡CHAMBA COMPLETADA DARLING!* 🌸\n\nLe chupas el pene a los creadores de la bot y ganas *${ganancia} monedas* 😂\n¡Zero Two aprueba este método troll! 💕\n\nSaldo actual: ${coins[userId].balance}`)
     }
 
     // #dar
     if (command === 'dar' || command === 'give') {
         const mentioned = m.mentionedJid[0] || (m.quoted ? m.quoted.sender : null)
         const cantidad = parseInt(args[1] || args[0])
-        if (!mentioned || isNaN(cantidad) || cantidad < 10) {
-            await conn.sendMessage(m.chat, { text: '💔 Usa: *#dar @user 100*' }, { quoted: m })
-            return
-        }
-        if (coins[userId].balance < cantidad) {
-            await conn.sendMessage(m.chat, { text: '💔 No tienes suficientes monedas mi amor\~' }, { quoted: m })
-            return
-        }
+        if (!mentioned || isNaN(cantidad) || cantidad < 10) return m.reply('💔 Usa: *#dar @user 100*')
+        if (coins[userId].balance < cantidad) return m.reply('💔 No tienes suficientes monedas mi amor\~')
 
         if (!coins[mentioned]) coins[mentioned] = { balance: 100 }
         coins[userId].balance -= cantidad
         coins[mentioned].balance += cantidad
         saveCoins()
 
-        await conn.sendMessage(m.chat, { 
-            text: `💞 Le diste *\( {cantidad} monedas* a @ \){mentioned.split('@')[0]}`, 
-            mentions: [mentioned] 
-        }, { quoted: m })
-        await m.react('💗')
-        return
+        return m.reply(`💞 Le diste *\( {cantidad} monedas* a @ \){mentioned.split('@')[0]}`, null, { mentions: [mentioned] })
     }
 
     // #robar
     if (command === 'robar' || command === 'rob') {
         const mentioned = m.mentionedJid[0] || (m.quoted ? m.quoted.sender : null)
-        if (!mentioned) {
-            await conn.sendMessage(m.chat, { text: '💔 Menciona a alguien darling\~' }, { quoted: m })
-            return
-        }
+        if (!mentioned) return m.reply('💔 Menciona a alguien darling\~')
         let victima = coins[mentioned] || { balance: 100 }
-        if (victima.balance < 20) {
-            await conn.sendMessage(m.chat, { text: '💔 No tiene monedas esa víctima\~' }, { quoted: m })
-            return
-        }
+        if (victima.balance < 20) return m.reply('💔 No tiene monedas esa víctima\~')
 
         if (Math.random() < 0.6) {
             const robado = Math.floor(victima.balance * 0.3) + 10
             coins[userId].balance += robado
             victima.balance -= robado
             saveCoins()
-            await conn.sendMessage(m.chat, { 
-                text: `💰 ¡Le robaste *\( {robado} monedas* a @ \){mentioned.split('@')[0]}!`, 
-                mentions: [mentioned] 
-            }, { quoted: m })
+            return m.reply(`💰 ¡Le robaste *\( {robado} monedas* a @ \){mentioned.split('@')[0]}!`, null, { mentions: [mentioned] })
         } else {
             coins[userId].balance = Math.max(0, coins[userId].balance - 30)
             saveCoins()
-            await conn.sendMessage(m.chat, { text: '💔 ¡Te atraparon! Perdiste 30 monedas 😂' }, { quoted: m })
+            return m.reply('💔 ¡Te atraparon! Perdiste 30 monedas 😂')
         }
-        return
     }
 
     // #top
@@ -112,10 +82,7 @@ let handler = async (m, { conn, args, command }) => {
         const top = Object.entries(coins).sort((a,b) => b[1].balance - a[1].balance).slice(0,10)
         let txt = `✨ *TOP 10 MÁS RICOS* ✨\n\n`
         top.forEach(([id,data],i) => txt += `\( {i+1}° @ \){id.split('@')[0]} → *${data.balance} monedas*\n`)
-        await conn.sendMessage(m.chat, { 
-            text: txt, 
-            mentions: top.map(t => t[0]) 
-        }, { quoted: m })
+        return m.reply(txt, null, { mentions: top.map(t => t[0]) })
     }
 }
 
