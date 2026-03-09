@@ -1,45 +1,50 @@
 import { database } from '../lib/database.js'
 
-const resolveUser = async (user, conn, chat) => {
-    if (!user) return null
-    if (user.endsWith('@lid') || isNaN(user.split('@')[0])) {
-        try {
-            const groupMeta = await conn.groupMetadata(chat)
-            const found = groupMeta.participants.find(p => p.id === user || p.lid === user)
-            if (found?.jid) return found.jid
-        } catch {}
-    }
-    return user
-}
-
 const handler = async (m, { conn, who }) => {
     const groupId = m.chat
+
+    // Resolver who igual que el mute
+    let target = who
+    if (m.mentionedJid?.length > 0) {
+        target = m.mentionedJid[0]
+    } else if (m.quoted?.sender) {
+        target = m.quoted.sender
+    }
+
+    if (!target) return m.reply('💗 Menciona o responde a alguien darling~')
+
+    // Resolver LID a JID
+    if (target.endsWith('@lid') || isNaN(target.split('@')[0])) {
+        try {
+            const groupMeta = await conn.groupMetadata(m.chat)
+            const found = groupMeta.participants.find(p => p.id === target || p.lid === target)
+            if (found?.jid) target = found.jid
+        } catch {}
+    }
+
     const warns = database.data.groups?.[groupId]?.warnings
 
     if (!warns || Object.keys(warns).length === 0) {
         return m.reply('🌸 Nadie tiene advertencias en este grupo darling~')
     }
 
-    let user = await resolveUser(who, conn, m.chat)
-    if (!user) return m.reply('💗 Menciona o responde a alguien darling~')
-
-    if (!warns[user] || warns[user].count === 0) {
+    if (!warns[target] || warns[target].count === 0) {
         return m.reply('🌸 Este usuario no tiene advertencias darling~')
     }
 
-    warns[user].count--
-    warns[user].reasons.pop()
+    warns[target].count--
+    warns[target].reasons.pop()
 
-    if (warns[user].count <= 0) delete warns[user]
+    if (warns[target].count <= 0) delete warns[target]
 
     await database.save()
 
     await conn.sendMessage(m.chat, {
         text:
             `💗 *Advertencia quitada* 𖤐\n\n` +
-            `ꕦ Usuario: @${user.split('@')[0]}\n` +
-            `ꙮ Advertencias: *${warns[user]?.count || 0}/3*`,
-        mentions: [user]
+            `ꕦ Usuario: @${target.split('@')[0]}\n` +
+            `ꙮ Advertencias: *${warns[target]?.count || 0}/3*`,
+        mentions: [target]
     }, { quoted: m })
 
     await m.react('🌸')
