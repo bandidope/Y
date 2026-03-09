@@ -1,100 +1,118 @@
 import fs from 'fs'
-import fetch from 'node-fetch'
-import { database } from '../lib/database.js'
+import { join } from 'path'
 
-const handler = async (m, { conn }) => {
+const handler = async (m, { conn, usedPrefix }) => {
     try {
-        const botname = global.botname || global.botName || 'Zero Two'
+        // --- 1. CONFIGURACIÓN E IDENTIDAD (De settings.js) ---
+        let nombreBot = global.botname || 'Zero Two'
+        let bannerFinal = global.menuImage || 'https://qu.ax/ZpYp.jpg'
+        
+        const botActual = conn.user?.jid?.split('@')[0]?.replace(/\D/g, '')
+        const configPath = join('./JadiBots', botActual || '', 'settings.js')
 
-        const pluginFiles = fs.readdirSync('./plugins').filter(file => file.endsWith('.js'))
-
-        const grouped = {}
-        for (const file of pluginFiles) {
+        if (botActual && fs.existsSync(configPath)) {
             try {
-                const plugin = (await import(`../plugins/${file}`)).default
-                const tags = plugin?.tags || ['misc']
-                const cmd = plugin?.command?.[0] || file.replace('.js', '')
-                for (const tag of tags) {
-                    if (!grouped[tag]) grouped[tag] = []
-                    grouped[tag].push(cmd)
+                const config = JSON.parse(fs.readFileSync(configPath))
+                if (config.name) nombreBot = config.name
+                if (config.banner) bannerFinal = config.banner
+            } catch (e) { console.error("Error en JadiBot Config:", e) }
+        }
+
+        // --- 2. RELOJ OPTIMIZADO (Senior Choice) ---
+        const hora = new Date().toLocaleTimeString('en-US', { 
+            timeZone: 'America/Bogota', 
+            hour: '2-digit', 
+            hour12: false 
+        })
+        const hourNum = parseInt(hora)
+        const saludo = (hourNum >= 5 && hourNum < 12) ? 'Buenos días' : (hourNum >= 12 && hourNum < 18) ? 'Buenas tardes' : 'Buenas noches'
+
+        // --- 3. SISTEMA DE CACHÉ (Evita lag en el servidor) ---
+        // Cacheamos la estructura de los comandos por 60 segundos
+        global.menuCache ??= { grouped: null, totalCmds: 0, lastUpdate: 0 }
+        const ahoraMs = Date.now()
+
+        if (!global.menuCache.grouped || (ahoraMs - global.menuCache.lastUpdate) > 60000) {
+            const grouped = {}
+            const totalCommandSet = new Set()
+
+            // Loop optimizado: for...of es más rápido que forEach en V8
+            for (const plugin of Object.values(global.plugins)) {
+                if (!plugin || !plugin.command) continue
+                
+                const cmds = Array.isArray(plugin.command) ? plugin.command : [plugin.command]
+                const tags = plugin.tags || ['otros']
+
+                for (const cmd of cmds) {
+                    totalCommandSet.add(cmd)
                 }
-            } catch {
-                const cmd = file.replace('.js', '')
-                if (!grouped['misc']) grouped['misc'] = []
-                grouped['misc'].push(cmd)
+
+                for (const tag of tags) {
+                    if (!grouped[tag]) grouped[tag] = new Set()
+                    for (const cmd of cmds) {
+                        grouped[tag].add(cmd)
+                    }
+                }
+            }
+
+            global.menuCache = {
+                grouped,
+                totalCmds: totalCommandSet.size,
+                lastUpdate: ahoraMs
             }
         }
 
-        const totalCmds = Object.values(grouped).flat().length
-        const totalUsers = Object.keys(database.data.users || {}).length
-        const registeredUsers = Object.values(database.data.users || {}).filter(u => u.registered).length
+        const { grouped, totalCmds } = global.menuCache
+        const totalUsers = Object.keys(global.db?.data?.users || {}).length
 
-        let seccionesTexto = Object.entries(grouped).map(([tag, cmds]) =>
-`𖤐 *${tag.toUpperCase()}*
-${cmds.map(c => `  ꕦ ${c}`).join('\n')}
+        // --- 4. CONSTRUCCIÓN DEL TEXTO ---
+        let menuTexto = `𝐇𝐨𝐥𝐚 *${m.pushName}*, ${saludo}!
+𝐒𝐨𝐲 *${nombreBot}* ${conn.user?.jid === global.conn?.user?.jid ? '(𝐌𝐨𝐨𝐝)' : '(𝐒𝐮𝐛-𝐁𝐨𝐭)'}
+
+╭┈ ↷
+│ ✐ ${global.textbot || 'Asistente Multi-funcional'}
+│ ✐ ꒷ꕤ💎ദ Canal oficial ෴
+│ https://whatsapp.com/channel/0029Vb6p68rF6smrH4Jeay3Y
+╰─────────────────
+
+ꙮ *Comandos:* ${totalCmds} únicos
+ꙮ *Usuarios:* ${totalUsers} registrados
+
 `
-        ).join('\n')
-
-        const zonaHoraria = 'America/Bogota'
-        const ahora = new Date()
-        const hora = parseInt(ahora.toLocaleTimeString('es-CO', { timeZone: zonaHoraria, hour: '2-digit', hour12: false }))
-
-        let saludo, carita
-        if (hora >= 5 && hora < 12) {
-            saludo = 'buenos días'
-            carita = '(＊^▽^＊) ☀️'
-        } else if (hora >= 12 && hora < 18) {
-            saludo = 'buenas tardes'
-            carita = '(｡•̀ᴗ-)✧ 🌸'
-        } else {
-            saludo = 'buenas noches'
-            carita = '(◕‿◕✿) 🌙'
+        // Secciones ordenadas
+        const sortedTags = Object.keys(grouped).sort()
+        for (const tag of sortedTags) {
+            menuTexto += `*»  ⊹ ˚୨ •(=^●ω●^=)• ${tag.toUpperCase()}* ⊹\n`
+            menuTexto += [...grouped[tag]].map(c => `> ❏ ${usedPrefix}${c}`).join('\n')
+            menuTexto += '\n\n'
         }
 
-        let menuTexto = `𖤐 ❖ 𝐙𝐄𝐑𝐎 𝐓𝐖𝐎'𝐒 𝐌𝐄𝐍𝐔 ❖ 𖤐
+        menuTexto += `_Powered by ${nombreBot}_`
 
-❝ ¡Hola *${m.pushName}*, ${saludo}~! ${carita}
-Soy *${botname}* y este es mi menú,
-más te vale usarlo bien... hmph 💗 ❞
-
-ꙮ *Comandos:* ${totalCmds} disponibles
-ꙮ *Usuarios:* ${totalUsers} conocidos
-ꙮ *Registrados:* ${registeredUsers} darlings
-
-${seccionesTexto}
-𖤐 *~Zero Two* 🌸 (´｡• ᵕ •｡\`)`.trim()
-
-        const response = await fetch('https://causas-files.vercel.app/fl/9vs2.jpg')
-        const buffer = await response.buffer()
-        const base64 = buffer.toString('base64')
-
+        // --- 5. ENVÍO CON branding ---
         await conn.sendMessage(m.chat, {
-            document: buffer,
-            mimetype: 'application/pdf',
-            fileName: `『 Zero Two Menu 』.pdf`,
-            fileLength: 2199023255552,
-            pageCount: 2026,
-            caption: menuTexto,
-            mentions: [m.sender],
+            text: menuTexto.trim(),
             contextInfo: {
+                mentionedJid: [m.sender],
                 externalAdReply: {
-                    title: '𝐙𝐄𝐑𝐎 𝐓𝐖𝐎',
-                    body: 'darling~ 💗',
+                    title: `${nombreBot} | Stable v6.0`,
+                    body: 'High Performance System 🚀',
                     mediaType: 1,
-                    thumbnail: base64,
+                    sourceUrl: 'https://github.com/zoredevteam-ctrl/Zore-two',
+                    thumbnailUrl: bannerFinal,
                     renderLargerThumbnail: true
                 }
             }
         }, { quoted: m })
 
     } catch (e) {
-        console.error(e)
-        m.reply('💔 Darling, algo salió mal al generar el menú... prueba de nuevo~')
+        console.error("Critical Error:", e)
+        m.reply(`✘ Error interno: ${e.message}`)
     }
 }
 
 handler.help = ['menu']
 handler.tags = ['main']
-handler.command = ['menu', 'help', 'ayuda']
+handler.command = /^(menu|help|ayuda|comandos)$/i
 
 export default handler
