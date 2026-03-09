@@ -21,16 +21,16 @@ let handler = async (m, { command }) => {
         saveCoins()
     }
 
-    const moneda = global.moneda || 'monedas'   // ← Usa la global del settings
+    const moneda = global.moneda || 'monedas'
 
     await m.react('🍬')
 
-    // #saldo
+    // #saldo / #bal / #dinero
     if (command === 'saldo' || command === 'bal' || command === 'dinero') {
         return m.reply(`💗 *¡Tu saldo actual darling!* 🌸\n\n💰 *${moneda}:* ${coins[userId].balance}`)
     }
 
-    // #chamba troll
+    // #chamba (texto troll exacto que pediste)
     if (command === 'chamba') {
         if (Date.now() - (coins[userId].lastChamba || 0) < 3600000) {
             return m.reply('💔 Ya chambeaste hoy darling\~ vuelve en 1 hora no me dejes sola\~')
@@ -41,7 +41,10 @@ let handler = async (m, { command }) => {
         coins[userId].lastChamba = Date.now()
         saveCoins()
 
-        return m.reply(`💗 *¡CHAMBA COMPLETADA DARLING!* 🌸\n\nLe chupas el pene a los creadores de la bot y ganas *${ganancia} ${moneda}* 😂\n¡Zero Two aprueba este método troll! 💕\n\nSaldo actual: ${coins[userId].balance} ${moneda}`)
+        return m.reply(`💗 *¡CHAMBA COMPLETADA DARLING!* 🌸\n\n` +
+                       `Le chupas el pene a los creadores de la bot y ganas *${ganancia} ${moneda}* 😂\n` +
+                       `¡Zero Two aprueba este método troll! 💕\n\n` +
+                       `Saldo actual: ${coins[userId].balance} ${moneda}`)
     }
 }
 
