@@ -1,18 +1,4 @@
-import fs from 'fs'
-import path from 'path'
-
-const dataDir = './database'
-const dataFile = path.join(dataDir, 'coins.json')
-
-let coins = {}
-try {
-    if (fs.existsSync(dataFile)) {
-        const data = fs.readFileSync(dataFile, 'utf8').trim()
-        if (data) coins = JSON.parse(data)
-    }
-} catch (e) {}
-
-const saveCoins = () => fs.writeFileSync(dataFile, JSON.stringify(coins, null, 2))
+import { database } from '../lib/database.js'
 
 const enemigos = [
     "Slime Rey pervertido", "Goblin caliente", "Dragón waifu celosa",
@@ -21,19 +7,22 @@ const enemigos = [
 
 let handler = async (m, { command }) => {
     const userId = m.sender
-    if (!coins[userId]) {
-        coins[userId] = { balance: 100, lastBatalla: 0 }
-        saveCoins()
-    }
+
+    if (!database.data.users) database.data.users = {}
+    if (!database.data.users[userId]) database.data.users[userId] = {}
+
+    const user = database.data.users[userId]
+    if (!user.coins) user.coins = 100
+    if (!user.lastBatalla) user.lastBatalla = 0
 
     const moneda = global.moneda || 'monedas'
 
     await m.react('🍬')
 
     // Cooldown 15 minutos
-    if (Date.now() - (coins[userId].lastBatalla || 0) < 900000) {
-        const tiempo = Math.ceil((900000 - (Date.now() - coins[userId].lastBatalla)) / 60000)
-        return m.reply(`💔 Ya peleaste hoy darling\~\nVuelve en *${tiempo} minutos* no me dejes sola\~`)
+    if (Date.now() - user.lastBatalla < 900000) {
+        const tiempo = Math.ceil((900000 - (Date.now() - user.lastBatalla)) / 60000)
+        return m.reply(`💔 Ya peleaste hoy darling~\nVuelve en *${tiempo} minutos* no me dejes sola~`)
     }
 
     const enemigo = enemigos[Math.floor(Math.random() * enemigos.length)]
@@ -42,28 +31,26 @@ let handler = async (m, { command }) => {
     let ganancia = 0
     let texto = ''
 
-    if (resultado < 0.45) { // 45% ganas
+    if (resultado < 0.45) {
         ganancia = Math.floor(Math.random() * 250) + 150
-        coins[userId].balance += ganancia
+        user.coins += ganancia
         texto = `💗 *¡GANASTE LA BATALLA DARLING!* 🌸\n\n` +
                 `Derrotaste al ${enemigo} usando tu técnica secreta "Chupada Ultra"...\n` +
                 `¡Te dio *${ganancia} ${moneda}* como recompensa! 😂`
-    } 
-    else if (resultado < 0.75) { // 30% empate
+    } else if (resultado < 0.75) {
         ganancia = Math.floor(Math.random() * 80) + 40
-        coins[userId].balance += ganancia
-        texto = `🌸 *¡EMPATE!* El \( {enemigo} te dio un beso y te dejó * \){ganancia} ${moneda}* por lástima\~`
-    } 
-    else { // 25% pierdes
+        user.coins += ganancia
+        texto = `🌸 *¡EMPATE!* El ${enemigo} te dio un beso y te dejó *${ganancia} ${moneda}* por lástima~`
+    } else {
         ganancia = Math.floor(Math.random() * 120) + 50
-        coins[userId].balance = Math.max(0, coins[userId].balance - ganancia)
-        texto = `💔 *¡PERDISTE LA BATALLA!* El \( {enemigo} te dejó sin ropa y te robó * \){ganancia} ${moneda}*... ay nooo\~ 😭`
+        user.coins = Math.max(0, user.coins - ganancia)
+        texto = `💔 *¡PERDISTE LA BATALLA!* El ${enemigo} te dejó sin ropa y te robó *${ganancia} ${moneda}*... ay nooo~ 😭`
     }
 
-    coins[userId].lastBatalla = Date.now()
-    saveCoins()
+    user.lastBatalla = Date.now()
+    await database.save()
 
-    return m.reply(texto + `\n\n💰 Saldo actual: ${coins[userId].balance} ${moneda}`)
+    return m.reply(texto + `\n\n💰 Saldo actual: *${user.coins} ${moneda}*`)
 }
 
 handler.help = ['batalla', 'rpgbatalla']
