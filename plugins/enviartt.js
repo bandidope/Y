@@ -1,5 +1,8 @@
 import fetch from 'node-fetch'
 
+const API_KEY  = 'causa-ec43262f206b3305'
+const API_BASE = 'https://rest.apicausas.xyz/api/v1/descargas/tiktok'
+
 let handler = async (m, { conn, args }) => {
     let url = args[0] || (m.quoted && m.quoted.text ? m.quoted.text.trim() : '')
     
@@ -11,24 +14,23 @@ let handler = async (m, { conn, args }) => {
     await m.react('🍬')
 
     try {
-        // ←←← MISMA API QUE USAS EN #tt ←←←
-        const apiUrl = `https://rest.apicausas.xyz/api/tiktok?url=${encodeURIComponent(url)}`
-        const res = await fetch(apiUrl)
+        const res  = await fetch(`\( {API_BASE}?url= \){encodeURIComponent(url)}&apikey=${API_KEY}`)
         const json = await res.json()
 
-        if (!json.data?.video) {
-            throw new Error('La API no devolvió video')
+        if (!json.status || !json.data?.download?.url) {
+            throw new Error('No se encontró video')
         }
 
-        const videoUrl = json.data.video
-        const videoBuffer = await fetch(videoUrl).then(r => r.buffer())
+        const videoBuffer = await fetch(json.data.download.url).then(r => r.buffer())
 
         // TU CANAL OFICIAL
         const CANAL = '0029Vb6p68rF6smrH4Jeay3Y@newsletter'
 
         await conn.sendMessage(CANAL, {
             video: videoBuffer,
-            caption: `💗 *TikTok enviado por \( {m.pushName}*\n\n \){json.data.title || 'Sin título'}`
+            caption: `💗 *TikTok enviado por ${m.pushName}*\n\n` +
+                     `✨ Autor: ${json.data.autor || 'TikTok'}\n` +
+                     `📝 Título: ${json.data.titulo || 'Sin descripción'}`
         })
 
         await m.reply('✅ Video enviado correctamente a tu canal oficial darling\~ 💕')
@@ -37,7 +39,7 @@ let handler = async (m, { conn, args }) => {
     } catch (e) {
         console.error('ENVIARTT ERROR:', e.message || e)
         await m.react('💔')
-        m.reply('💔 Uy darling... este link no funcionó con mi API\~\nPrueba con otro link')
+        m.reply('💔 Uy darling... este link no funcionó con mi API\~\nPrueba con otro TikTok')
     }
 }
 
