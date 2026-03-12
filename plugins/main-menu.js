@@ -7,9 +7,8 @@ const handler = async (m, { conn }) => {
         const botname = global.botname || global.botName || 'Zero Two'
 
         // ==================== CONFIGURA TU CANAL AQUÍ ====================
-        const canalLink = 'https://whatsapp.com/channel/0029VaXXXXXXXXXXXXXXXX' // ← CAMBIA ESTO
-        const canalId   = '0029VaXXXXXXXXXXXXXXXX' // ← CAMBIA ESTO (ID del canal)
-        // ================================================================
+        const canalLink = 'https://whatsapp.com/channel/0029Vb6p68rF6smrH4Jeay3Y'
+        const canalId   = '120363404822730259@newsletter' ================================================================
 
         const pluginFiles = fs.readdirSync('./plugins').filter(file => file.endsWith('.js'))
 
