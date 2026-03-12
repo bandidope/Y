@@ -5,9 +5,7 @@ import { database } from '../lib/database.js'
 const handler = async (m, { conn }) => {
     try {
         const botname = global.botname || global.botName || 'Zero Two'
-
         const pluginFiles = fs.readdirSync('./plugins').filter(file => file.endsWith('.js'))
-
         const grouped = {}
         for (const file of pluginFiles) {
             try {
@@ -38,7 +36,6 @@ ${cmds.map(c => `  ꕦ ${c}`).join('\n')}
         const zonaHoraria = 'America/Bogota'
         const ahora = new Date()
         const hora = parseInt(ahora.toLocaleTimeString('es-CO', { timeZone: zonaHoraria, hour: '2-digit', hour12: false }))
-
         let saludo, carita
         if (hora >= 5 && hora < 12) {
             saludo = 'buenos días'
@@ -52,15 +49,12 @@ ${cmds.map(c => `  ꕦ ${c}`).join('\n')}
         }
 
         let menuTexto = `𖤐 ❖ 𝐙𝐄𝐑𝐎 𝐓𝐖𝐎'𝐒 𝐌𝐄𝐍𝐔 ❖ 𖤐
-
 ❝ ¡Hola *${m.pushName}*, ${saludo}~! ${carita}
 Soy *${botname}* y este es mi menú,
 más te vale usarlo bien... hmph 💗 ❞
-
 ꙮ *Comandos:* ${totalCmds} disponibles
 ꙮ *Usuarios:* ${totalUsers} conocidos
 ꙮ *Registrados:* ${registeredUsers} darlings
-
 ${seccionesTexto}
 𖤐 *~Zero Two* 🌸 (´｡• ᵕ •｡\`)`.trim()
 
@@ -77,12 +71,20 @@ ${seccionesTexto}
             caption: menuTexto,
             mentions: [m.sender],
             contextInfo: {
+                isForwarded: true,
+                forwardingScore: 999,
                 externalAdReply: {
                     title: '𝐙𝐄𝐑𝐎 𝐓𝐖𝐎',
                     body: 'darling~ 💗',
                     mediaType: 1,
                     thumbnail: base64,
-                    renderLargerThumbnail: true
+                    renderLargerThumbnail: true,
+                    sourceUrl: 'https://whatsapp.com/channel/0029Vb6p68rF6smrH4Jeay3Y'
+                },
+                forwardedNewsletterMessageInfo: {
+                    newsletterJid: '120363404822730259@newsletter',
+                    newsletterName: '𝐙𝐄𝐑𝐎 𝐓𝐖𝐎',
+                    serverMessageId: -1
                 }
             }
         }, { quoted: m })
@@ -96,5 +98,4 @@ ${seccionesTexto}
 handler.help = ['menu']
 handler.tags = ['main']
 handler.command = ['menu', 'help', 'ayuda']
-
 export default handler
