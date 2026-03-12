@@ -76,43 +76,25 @@ async function loadPlugins () {
     try {
       const filePath = path.join(pluginsDir, file)
       const plugin = (await import(`${filePath}?t=${Date.now()}`)).default
-      if (plugin) {
-        plugins.set(file, plugin)
-        log.success(`Plugin cargado: ${file}`)
-      }
-    } catch (e) {
-      log.error(`Error cargando plugin ${file}: ${e.message}`)
-    }
+      if (plugin) plugins.set(file, plugin)
+    } catch {}
   }
 
   fs.watch(pluginsDir, async (event, filename) => {
     if (!filename?.endsWith('.js')) return
-
     const filePath = path.join(pluginsDir, filename)
 
     try {
       if (fs.existsSync(filePath)) {
         const plugin = (await import(`${filePath}?t=${Date.now()}`)).default
-        if (plugin) {
-          plugins.set(filename, plugin)
-          log.success(`Plugin recargado: ${filename}`)
-        }
-      } else {
-        plugins.delete(filename)
-        log.warn(`Plugin eliminado: ${filename}`)
-      }
-    } catch (e) {
-      log.error(`Error recargando plugin ${filename}: ${e.message}`)
-    }
+        if (plugin) plugins.set(filename, plugin)
+      } else plugins.delete(filename)
+    } catch {}
   })
 }
 
 global.sessionName = global.sessionName || './Sessions/Owner'
-try {
-  fs.mkdirSync(global.sessionName, { recursive: true })
-} catch (e) {
-  log.error(`No se pudo crear carpeta de sesión: ${e.message}`)
-}
+fs.mkdirSync(global.sessionName, { recursive: true })
 
 const methodCodeQR = process.argv.includes('--qr')
 const methodCode = process.argv.includes('--code')
@@ -134,144 +116,108 @@ let phoneNumber = ''
 if (methodCodeQR) opcion = '1'
 else if (methodCode) opcion = '2'
 else if (!fs.existsSync('./Sessions/Owner/creds.json')) {
-  opcion = readlineSync.question(
-    chalk.bold.white('\nSeleccione una opción:\n') +
-    chalk.blueBright('1. Con código QR\n') +
-    chalk.cyan('2. Con código de texto de 8 dígitos\n--> ')
-  )
-
-  while (!/^[1-2]$/.test(opcion)) {
-    log.error('Solo ingrese 1 o 2.')
-    opcion = readlineSync.question('--> ')
-  }
-
+  opcion = readlineSync.question('\n1. QR\n2. Código\n--> ')
   if (opcion === '2') {
-    console.log(chalk.yellowBright('\nIngrese su número de WhatsApp:\nEjemplo: +57301******\n'))
-    const phoneInput = readlineSync.question(chalk.hex('#ff1493')('ꕤ --> '))
+    const phoneInput = readlineSync.question('Numero: ')
     phoneNumber = normalizePhone(phoneInput)
   }
 }
 
 export async function startSubBot (sessionPath) {
-  try {
-    const { state, saveCreds } = await useMultiFileAuthState(sessionPath)
-    const { version } = await fetchLatestBaileysVersion()
-    const logger = pino({ level: 'silent' })
+  const { state, saveCreds } = await useMultiFileAuthState(sessionPath)
+  const { version } = await fetchLatestBaileysVersion()
+  const logger = pino({ level: 'silent' })
 
-    const subConn = makeWASocket({
-      version,
-      logger,
-      printQRInTerminal: false,
-      browser: Browsers.macOS('Chrome'),
-      auth: {
-        creds: state.creds,
-        keys: makeCacheableSignalKeyStore(state.keys, logger)
-      },
-      markOnlineOnConnect: false,
-      generateHighQualityLinkPreview: true,
-      syncFullHistory: false,
-      getMessage: async () => '',
-      keepAliveIntervalMs: 45000
-    })
+  const subConn = makeWASocket({
+    version,
+    logger,
+    printQRInTerminal: false,
+    browser: Browsers.macOS('Chrome'),
+    auth: {
+      creds: state.creds,
+      keys: makeCacheableSignalKeyStore(state.keys, logger)
+    },
+    markOnlineOnConnect: false,
+    generateHighQualityLinkPreview: true,
+    syncFullHistory: false,
+    getMessage: async () => '',
+    keepAliveIntervalMs: 45000
+  })
 
-    subConn.sessionPath = sessionPath
+  subConn.sessionPath = sessionPath
 
-    subConn.decodeJid = jid => {
-      if (!jid) return jid
-      if (/:\d+@/gi.test(jid)) {
-        const decode = jidDecode(jid) || {}
-        return decode.user && decode.server ? decode.user + '@' + decode.server : jid
-      }
-      return jid
+  subConn.decodeJid = jid => {
+    if (!jid) return jid
+    if (/:\d+@/gi.test(jid)) {
+      const decode = jidDecode(jid) || {}
+      return decode.user && decode.server ? decode.user + '@' + decode.server : jid
+    }
+    return jid
+  }
+
+  subConn.ev.on('creds.update', saveCreds)
+
+  subConn.ev.on('connection.update', async update => {
+    const { connection, lastDisconnect } = update
+    const reason = lastDisconnect?.error?.output?.statusCode
+
+    if (connection === 'open') {
+      const idx = global.conns.findIndex(c => c.sessionPath === sessionPath)
+      if (idx !== -1) global.conns.splice(idx, 1)
+      global.conns.push(subConn)
+      await loadEvents(subConn)
     }
 
-    subConn.ev.on('creds.update', saveCreds)
+    if (connection === 'close') {
+      global.conns = global.conns.filter(c => c.sessionPath !== sessionPath)
 
-    subConn.ev.on('connection.update', async update => {
-      const { connection, lastDisconnect } = update
-      const reason = lastDisconnect?.error?.output?.statusCode
+      if ([
+        DisconnectReason.connectionLost,
+        DisconnectReason.connectionClosed,
+        DisconnectReason.restartRequired,
+        DisconnectReason.timedOut,
+        DisconnectReason.badSession
+      ].includes(reason)) startSubBot(sessionPath)
+      else if (reason === DisconnectReason.loggedOut) fs.rmSync(sessionPath, { recursive: true, force: true })
+      else if (reason === DisconnectReason.forbidden) fs.rmSync(sessionPath, { recursive: true, force: true })
+      else startSubBot(sessionPath)
+    }
+  })
 
-      if (connection === 'open') {
-        const idx = global.conns.findIndex(c => c.sessionPath === sessionPath)
-        if (idx !== -1) global.conns.splice(idx, 1)
-        global.conns.push(subConn)
-        log.success(`SubBot conectado: ${subConn.user?.name || 'Desconocido'} [${sessionPath}]`)
-        log.info(`Total subbots activos: ${global.conns.length}`)
-        await loadEvents(subConn)
-      }
+  subConn.ev.on('messages.upsert', async ({ messages }) => {
+    try {
+      let m = messages[0]
+      if (!m?.message) return
 
-      if (connection === 'close') {
-        global.conns = global.conns.filter(c => c.sessionPath !== sessionPath)
-        log.warn(`SubBot desconectado [${sessionPath}] | Razón: ${reason}`)
+      if (Object.keys(m.message)[0] === 'ephemeralMessage')
+        m.message = m.message.ephemeralMessage.message
 
-        if ([
-          DisconnectReason.connectionLost,
-          DisconnectReason.connectionClosed,
-          DisconnectReason.restartRequired,
-          DisconnectReason.timedOut,
-          DisconnectReason.badSession
-        ].includes(reason)) {
-          log.warn(`Reconectando subbot... (${reason})`)
-          startSubBot(sessionPath)
-        } else if (reason === DisconnectReason.loggedOut) {
-          log.warn(`Sesión subbot cerrada. Eliminando [${sessionPath}]...`)
-          fs.rmSync(sessionPath, { recursive: true, force: true })
-        } else if (reason === DisconnectReason.forbidden) {
-          log.error(`Acceso denegado subbot. Eliminando [${sessionPath}]...`)
-          fs.rmSync(sessionPath, { recursive: true, force: true })
-        } else {
-          log.warn(`Reconectando subbot por desconexión desconocida (${reason})...`)
-          startSubBot(sessionPath)
-        }
-      }
-    })
+      if (m.key?.remoteJid === 'status@broadcast') return
+      if (m.key?.id?.startsWith('BAE5') && m.key.id.length === 16) return
 
-    subConn.ev.on('messages.upsert', async ({ messages, type }) => {
-      try {
-        if (type !== 'notify') return
-        let m = messages[0]
-        if (!m?.message) return
+      m = await smsg(subConn, m)
 
-        if (Object.keys(m.message)[0] === 'ephemeralMessage') {
-          m.message = m.message.ephemeralMessage.message
-        }
+      await handler.call(subConn, m, subConn, plugins)
+    } catch {}
+  })
 
-        if (m.key?.remoteJid === 'status@broadcast') return
-        if (m.key?.id?.startsWith('BAE5') && m.key.id.length === 16) return
-
-        m = await smsg(subConn, m)
-        await handler(m, subConn, plugins)
-      } catch (e) {
-        log.error(`Error en mensaje subbot: ${e.message}`)
-      }
-    })
-
-    return subConn
-  } catch (e) {
-    log.error(`Error iniciando subbot [${sessionPath}]: ${e.message}`)
-    return null
-  }
+  return subConn
 }
 
 async function autoConnectSubBots () {
-  try {
-    if (!fs.existsSync(SUBBOTS_DIR)) {
-      fs.mkdirSync(SUBBOTS_DIR, { recursive: true })
-      return
-    }
-    const folders = fs.readdirSync(SUBBOTS_DIR).filter(f => {
-      const fullPath = path.join(SUBBOTS_DIR, f)
-      return fs.statSync(fullPath).isDirectory() &&
-        fs.existsSync(path.join(fullPath, 'creds.json'))
-    })
-    if (folders.length === 0) return
-    log.info(`Reconectando ${folders.length} subbot(s)...`)
-    for (const folder of folders) {
-      await startSubBot(path.join(SUBBOTS_DIR, folder))
-    }
-  } catch (e) {
-    log.error(`Error en autoConnectSubBots: ${e.message}`)
+  if (!fs.existsSync(SUBBOTS_DIR)) {
+    fs.mkdirSync(SUBBOTS_DIR, { recursive: true })
+    return
   }
+
+  const folders = fs.readdirSync(SUBBOTS_DIR).filter(f => {
+    const fullPath = path.join(SUBBOTS_DIR, f)
+    return fs.statSync(fullPath).isDirectory() &&
+      fs.existsSync(path.join(fullPath, 'creds.json'))
+  })
+
+  for (const folder of folders)
+    await startSubBot(path.join(SUBBOTS_DIR, folder))
 }
 
 global.startSubBot = startSubBot
@@ -311,38 +257,13 @@ async function startBot () {
 
   conn.ev.on('creds.update', saveCreds)
 
-  if (opcion === '2' && !fs.existsSync('./Sessions/Owner/creds.json')) {
-    setTimeout(async () => {
-      try {
-        if (!state.creds.registered) {
-          const pairing = await conn.requestPairingCode(phoneNumber)
-          const code = pairing?.match(/.{1,4}/g)?.join('-') || pairing
-          console.log(
-            chalk.hex('#ff1493')('\nꕤ━━━━━━━━━━━━━━━━━━━━ꕤ\n') +
-            chalk.whiteBright('  CÓDIGO DE EMPAREJAMIENTO\n') +
-            chalk.hex('#ff1493')('ꕤ━━━━━━━━━━━━━━━━━━━━ꕤ\n') +
-            chalk.whiteBright(`  ${code}\n`) +
-            chalk.hex('#ff1493')('ꕤ━━━━━━━━━━━━━━━━━━━━ꕤ\n')
-          )
-        }
-      } catch (e) {
-        log.error(`Error al generar código: ${e.message}`)
-      }
-    }, 3000)
-  }
-
   conn.ev.on('connection.update', async update => {
     const { qr, connection, lastDisconnect } = update
 
-    if (qr && opcion === '1') {
-      console.log(chalk.hex('#ff1493')('\nꕤ Escanea el código QR:\n'))
-      qrcode.generate(qr, { small: true })
-    }
+    if (qr && opcion === '1') qrcode.generate(qr, { small: true })
 
     if (connection === 'open') {
       console.log(zeroBanner)
-      log.success(`Conectado como: ${conn.user?.name || 'Desconocido'}`)
-      log.info(`Plugins cargados: ${plugins.size}`)
       await loadEvents(conn)
       await autoConnectSubBots()
     }
@@ -356,53 +277,37 @@ async function startBot () {
         DisconnectReason.restartRequired,
         DisconnectReason.timedOut,
         DisconnectReason.badSession
-      ].includes(reason)) {
-        log.warn(`Reconectando... (${reason})`)
-        startBot()
-      } else if (reason === DisconnectReason.loggedOut) {
-        log.warn('Sesión cerrada. Eliminando sesión...')
+      ].includes(reason)) startBot()
+      else if (reason === DisconnectReason.loggedOut) {
         exec('rm -rf ./Sessions/Owner/*')
         process.exit(1)
       } else if (reason === DisconnectReason.forbidden) {
-        log.error('Acceso denegado. Eliminando sesión...')
         exec('rm -rf ./Sessions/Owner/*')
         process.exit(1)
-      } else if (reason === DisconnectReason.multideviceMismatch) {
-        log.warn('Multidispositivo no coincide. Reiniciando...')
-        exec('rm -rf ./Sessions/Owner/*')
-        process.exit(0)
-      } else {
-        log.error(`Desconexión desconocida: ${reason}`)
-        startBot()
-      }
+      } else startBot()
     }
   })
 
-  conn.ev.on('messages.upsert', async ({ messages, type }) => {
+  conn.ev.on('messages.upsert', async ({ messages }) => {
     try {
-      if (type !== 'notify') return
       let m = messages[0]
       if (!m?.message) return
 
-      if (Object.keys(m.message)[0] === 'ephemeralMessage') {
+      if (Object.keys(m.message)[0] === 'ephemeralMessage')
         m.message = m.message.ephemeralMessage.message
-      }
 
       if (m.key?.remoteJid === 'status@broadcast') return
       if (m.key?.id?.startsWith('BAE5') && m.key.id.length === 16) return
 
       m = await smsg(conn, m)
-      await handler(m, conn, plugins)
-    } catch (e) {
-      log.error(`Error en mensaje: ${e.message}`)
-    }
+
+      await handler.call(conn, m, conn, plugins)
+    } catch {}
   })
 }
 
 ;(async () => {
-  console.log(chalk.hex('#ff1493')('\nꕤ Iniciando Zero Two...\n'))
   await database.read()
-  log.success('Base de datos cargada.')
   await loadPlugins()
   global.plugins = plugins
   await startBot()
