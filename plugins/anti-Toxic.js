@@ -1,51 +1,51 @@
-// Usamos Regex para que no detecte palabras dentro de otras (ej: que no detecte "puta" en "disputa")
-const toxicWords = /\b(puta|puto|mierda|joder|pendejo|gilipollas|cabron|zorra|verga|coño|culo|maricon|hdp|hijo de puta)\b/i
+const toxicWords = /\b(puta|puto|mierda|joder|pendejo|gilipollas|cabron|zorra|verga|coño|culo|maricon|hdp|hijo de puta|negra|negro)\b/i
 
-let handler = async (m, { conn, isAdmin, isOwner }) => {
+let handler = m => m
+
+handler.before = async function (m, { conn, isAdmin, isOwner }) {
     if (!m.isGroup) return true
-    if (isAdmin || isOwner) return true // Los admins están exentos
-    if (!m.text) return true // Si es un sticker o imagen sin texto, ignorar
+    if (!m.text) return true
+    
+    // ⚠️ QUITÉ la protección de Owner/Admin para que puedas probar que SÍ funciona.
+    // Una vez que veas que sirve, vuelve a poner la línea de abajo:
+    // if (isAdmin || isOwner) return true 
 
     let user = global.db.data.users[m.sender]
-    if (!user) return true // Por si el usuario no existe en la DB todavía
+    if (!user) return true
 
     const texto = m.text.toLowerCase()
 
     if (toxicWords.test(texto)) {
-        console.log(`[ANTI-TOXIC] 📢 Palabra prohibida de: ${m.sender}`)
-
-        // Incrementar advertencias
-        user.toxicWarn = (user.toxicWarn || 0) + 1
-
-        // 1. Borrar el mensaje tóxico inmediatamente
+        // 1. Intentar borrar el mensaje (El bot DEBE ser admin del grupo)
         try {
             await conn.sendMessage(m.chat, { delete: m.key })
         } catch (e) {
-            console.log("No pude borrar el mensaje, quizás no soy admin.")
+            console.log("No soy admin, no puedo borrar mensajes.")
         }
 
-        // 2. Lógica de advertencias
+        // 2. Aumentar advertencia
+        user.toxicWarn = (user.toxicWarn || 0) + 1
+
+        // 3. Respuestas con mención
+        const name = `@${m.sender.split('@')[0]}`
+        
         if (user.toxicWarn === 1) {
-            await m.reply(`⚠️ *¡Cuidado darling!* 🌸\n\n@${m.sender.split('@')[0]}, no uses palabras tóxicas. Esta es tu **primera advertencia**.`, null, { mentions: [m.sender] })
+            await conn.reply(m.chat, `⚠️ *¡Advertencia 1!* ${name} no seas tóxico darling. 🌸`, m, { mentions: [m.sender] })
             await m.react('⚠️')
         } 
         else if (user.toxicWarn === 2) {
-            await m.reply(`⚠️ *¡Segunda advertencia, darling!* 🌸\n\n@${m.sender.split('@')[0]}, compórtate o tendré que sacarte. No me hagas ponerme triste...`, null, { mentions: [m.sender] })
+            await conn.reply(m.chat, `⚠️ *¡Advertencia 2!* ${name}, compórtate o te saco. 😡`, m, { mentions: [m.sender] })
             await m.react('😡')
         } 
         else if (user.toxicWarn >= 3) {
-            await m.reply(`💥 *¡ADIÓS, DARLING!* 💔\n\nTe lo advertí muchas veces. Zero Two no acepta gente tóxica aquí.`, null, { mentions: [m.sender] })
+            await conn.reply(m.chat, `💥 *¡ADIÓS!* ${name} no escuchaste... 💔`, m, { mentions: [m.sender] })
             await m.react('💀')
-            
-            // Reiniciar advertencias y expulsar
             user.toxicWarn = 0
             await conn.groupParticipantsUpdate(m.chat, [m.sender], 'remove')
         }
+        return false // Detiene la ejecución de otros comandos si es tóxico
     }
     return true
 }
-
-// 'before' hace que el bot revise el mensaje ANTES de ejecutar cualquier otro comando
-handler.before = true
 
 export default handler
