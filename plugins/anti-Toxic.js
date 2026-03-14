@@ -1,54 +1,50 @@
-// Lista de palabras tóxicas (Regex mejorado)
-const toxicWords = /\b(puta|puto|mierda|joder|pendejo|gilipollas|cabron|zorra|verga|coño|culo|maricon|hdp|hijo de puta|negra|negro)\b/i
-
-let handler = m => m
-
-handler.before = async function (m, { conn, isAdmin, isOwner }) {
+let handler = m => {
     if (!m.isGroup) return true
     if (!m.text) return true
+    if (m.isAdmin || m.isOwner) return true  // Staff protegido
 
-    const texto = m.text.toLowerCase()
+    let user = global.db.data.users[m.sender]
+    if (!user) {
+        global.db.data.users[m.sender] = { toxicWarn: 0 }
+        user = global.db.data.users[m.sender]
+    }
 
-    // Si el mensaje contiene palabras tóxicas...
-    if (toxicWords.test(texto)) {
-        
-        // 1. REGLA PARA STAFF / ADMINS
-        if (isAdmin || isOwner) {
-            return m.reply(`👑 *Atención:* No puedo eliminar este mensaje ya que el usuario es administrador o STAFF de la bot. ¡Tengan más cuidado con su lenguaje, darlings! 🌸`)
-        }
+    // Lista de palabras tóxicas (mejorada y más completa)
+    const toxicRegex = /\b(puta|puto|mierda|joder|pendejo|gilipollas|cabrón|zorra|verga|coño|culo|maricón|hdp|hijo de puta|negro|negra|estúpido|idiota|imbécil)\b/i
 
-        // 2. REGLA PARA USUARIOS NORMALES
-        let user = global.db.data.users[m.sender]
-        if (!user) return true
-
-        // Intentar borrar el mensaje (Zero Two debe ser admin del grupo)
+    if (toxicRegex.test(m.text.toLowerCase())) {
+        // Borrar mensaje tóxico
         try {
             await conn.sendMessage(m.chat, { delete: m.key })
-        } catch (e) {
-            console.log("No soy admin, no puedo borrar mensajes de otros.")
-        }
+        } catch {}
 
         user.toxicWarn = (user.toxicWarn || 0) + 1
+
         const name = `@${m.sender.split('@')[0]}`
 
         if (user.toxicWarn === 1) {
-            await conn.reply(m.chat, `⚠️ *¡Advertencia 1!* ${name} no seas tóxico darling. 🌸`, m, { mentions: [m.sender] })
+            await m.reply(`⚠️ *¡Primera advertencia darling!* 🌸\nNo uses palabras tóxicas o te voy a sacar del grupo.`, null, { mentions: [m.sender] })
             await m.react('⚠️')
         } 
         else if (user.toxicWarn === 2) {
-            await conn.reply(m.chat, `⚠️ *¡Advertencia 2!* ${name}, compórtate o te saco. 😡`, m, { mentions: [m.sender] })
+            await m.reply(`⚠️ *¡Segunda advertencia!* ${name}\nYa van dos... la próxima te echo sin piedad 😡`, null, { mentions: [m.sender] })
             await m.react('😡')
         } 
         else if (user.toxicWarn >= 3) {
-            await conn.reply(m.chat, `💥 *¡ADIÓS!* ${name} no escuchaste... 💔`, m, { mentions: [m.sender] })
+            await m.reply(`💥 *¡TERCERA Y ÚLTIMA!* ${name}\nLo siento darling, pero llegaste al límite... 💔`, null, { mentions: [m.sender] })
             await m.react('💀')
-            
-            user.toxicWarn = 0
+
+            // Kick
             await conn.groupParticipantsUpdate(m.chat, [m.sender], 'remove')
+            user.toxicWarn = 0
         }
-        return false // Bloquea que otros comandos se activen con ese mensaje
+
+        return false // Bloquea el mensaje
     }
     return true
 }
+
+handler.before = true
+handler.group = true
 
 export default handler
