@@ -1,36 +1,34 @@
 let handler = async (m, { conn }) => {
     // 1. Verificamos que esté respondiendo a algo
-    let q = m.quoted ? m.quoted : m
-    let mime = (q.msg || q).mimetype || ''
-    
     if (!m.quoted) {
         await m.react('⚠️')
-        return m.reply('💗 Darling~ tienes que responder al mensaje que quieres guardar.')
+        return m.reply('💗 Darling~ responde al mensaje que quieres guardar para que te lo mande al privado.')
     }
 
     await m.react('📦')
 
     try {
-        // Obtenemos el mensaje real que se quiere reenviar
-        let msg = await m.getQuotedObj()
+        // Usamos el método copyNForward directamente desde el mensaje citado
+        // Esto es mucho más efectivo que llamarlo desde conn
+        await m.quoted.copyNForward(m.sender, true)
         
-        // Usamos copyNForward que es el método más estable
-        // m.sender es el ID del usuario que pidió el save
-        await conn.copyNForward(m.sender, msg, true)
-        
+        // Si llega aquí, es que sí se envió
         await m.react('🍬')
-        await m.reply('✅ ¡Listo mi amor! Ya te lo envié al privado. Revisa nuestro chat~ 🌸')
+        // Opcional: Confirmación en el grupo
+        // await m.reply('✅ ¡Guardado en tu privado, darling! 🌸')
 
     } catch (e) {
-        console.error("Error en el comando save:", e)
-        await m.react('💔')
+        console.error("Error en save:", e)
         
-        // Si falla el reenvío automático, intentamos enviarlo como un mensaje nuevo
+        // Si el método directo falla, intentamos el método manual de respaldo
         try {
-            await conn.sendMessage(m.sender, { text: `Aquí tienes lo que querías guardar, darling:\n\n${m.quoted.text || ''}` }, { quoted: m.quoted.fakeObj })
-            await m.reply('✅ Te envié el texto al privado, pero no pude "reenviar" el mensaje original (quizás es un archivo muy grande o no hemos hablado antes).')
+            let jid = m.sender
+            let msg = m.quoted.fakeObj
+            await conn.copyNForward(jid, msg, true)
+            await m.react('🍬')
         } catch (err2) {
-            m.reply('💔 No pude enviarte nada al privado. Por favor, mándame un "Hola" allá primero para desbloquear el chat.')
+            await m.react('💔')
+            m.reply('💔 Darling, no pude reenviar el contenido. Asegúrate de que no sea un mensaje efímero o que el chat privado no esté bloqueado.')
         }
     }
 }
