@@ -1,22 +1,26 @@
 import { database } from '../lib/database.js'
 
 let handler = async (m, { conn }) => {
+    if (!database.data.groups?.[m.chat]?.nsfw) {
+        await m.react('💔')
+        return m.reply('🚫 El contenido NSFW está desactivado en este grupo.\n\nUn admin puede activarlo con *#nable nsfw on* darling\~')
+    }
 
-    if (!database.data.groups?.[m.chat]?.nsfw)
-        return m.reply('🚫 El contenido NSFW está desactivado.\n\nUn admin debe usar *.on nsfw*.')
+    await m.react('🍬')
 
     let img = 'https://api.delirius.store/nsfw/boobs'
-    let text = '*🍭 TETAS*'
+    let text = '💗 *TETAS* 🌸\n\n¡Disfrútalas mi amor\~ no me dejes sola! 💕'
 
-    await conn.sendMessage(
-        m.chat,
-        { image: { url: img }, caption: text },
-        { quoted: m }
-    )
+    await conn.sendMessage(m.chat, {
+        image: { url: img },
+        caption: text
+    }, { quoted: m })
 
-    await m.react('✅')
+    await m.react('💗')
 }
 
+handler.help = ['tetas']
+handler.tags = ['nsfw']
 handler.command = ['tetas']
 handler.group = true
 
