@@ -1,8 +1,8 @@
 import axios from 'axios'
 import { database } from '../lib/database.js'
 
-const hotw = '⚠️ El contenido NSFW está desactivado en este grupo.\n> Ve a jalartela a otro lado 😡'
-const dev = '> No te la jales 😏'
+const hotw = 'âš ï¸ El contenido NSFW estÃ¡ desactivado en este grupo.\n> Ve a jalartela a otro lado ðŸ˜¡'
+const dev = '> No te la jales ðŸ˜'
 
 const API_MAP = {
   'neko': 'https://api.waifu.pics/nsfw/neko',
@@ -42,53 +42,16 @@ let handler = async (m, { conn, command }) => {
       data.message ||
       (data.images && data.images.length ? data.images[0].url : null)
 
-    if (!imageUrl) throw 'Error'
+    if (!imageUrl) throw new Error('No se obtuvo URL de imagen')
 
     await conn.sendMessage(m.chat, {
       image: { url: imageUrl },
-      caption: `🥵 ${command}`,
-      footer: dev,
-      buttons: [
-        { buttonId: `next_${command}`, buttonText: { displayText: 'Siguiente' }, type: 1 }
-      ],
-      headerType: 4
+      caption: `ðŸ¥µ *${command}*\n${dev}`
     }, { quoted: m })
 
-  } catch {
-    m.reply('❌ Error al obtener contenido.')
+  } catch (e) {
+    m.reply('Œ Error al obtener contenido.')
   }
-}
-
-handler.before = async (m, { conn }) => {
-  const id = m.message?.buttonsResponseMessage?.selectedButtonId
-  if (!id) return
-
-  try {
-    const [action, command] = id.split('_')
-
-    if (action === 'next' && API_MAP[command]) {
-
-      const { data } = await axios.get(API_MAP[command])
-
-      const imageUrl =
-        data.url ||
-        data.message ||
-        (data.images && data.images.length ? data.images[0].url : null)
-
-      if (!imageUrl) return
-
-      await conn.sendMessage(m.chat, {
-        image: { url: imageUrl },
-        caption: `🥵 ${command}`,
-        footer: dev,
-        buttons: [
-          { buttonId: `next_${command}`, buttonText: { displayText: 'Siguiente' }, type: 1 }
-        ],
-        headerType: 4
-      }, { quoted: m })
-    }
-
-  } catch {}
 }
 
 handler.help = handler.command = NSFW_COMMANDS
