@@ -22,8 +22,7 @@ let handler = async (m, { args, usedPrefix, command }) => {
             if (!res.result?.files?.high && !res.result?.files?.low) throw new Error('No se encontró video')
 
             const dll = res.result.files.high || res.result.files.low
-            const thumb = await fetch(res.result.image).then(r => r.buffer())
-            const video = await fetch(dll).then(r => r.buffer())
+            const videoBuffer = await fetch(dll).then(r => r.buffer())
 
             let caption = `💗 *XNXX - DESCARGA EXITOSA!* 🌸\n\n` +
                           `Título: ${res.result.title}\n` +
@@ -33,7 +32,7 @@ let handler = async (m, { args, usedPrefix, command }) => {
                           `¡Disfrútalo mi amor\~ no me dejes sola! 💕`
 
             await conn.sendMessage(m.chat, {
-                video: video,
+                video: videoBuffer,
                 caption: caption,
                 mimetype: 'video/mp4'
             }, { quoted: m })
@@ -43,7 +42,7 @@ let handler = async (m, { args, usedPrefix, command }) => {
         }
 
         // Búsqueda
-        const res = await search(encodeURIComponent(query))
+        const res = await search(query)
         if (!res.result?.length) {
             await m.react('💔')
             return m.reply('💔 No se encontraron resultados darling\~')
@@ -69,7 +68,7 @@ async function xnxxdl(URL) {
     const $ = cheerio.load(html)
 
     const title = $('meta[property="og:title"]').attr("content") || $('title').text().trim()
-    const image = $('meta[property="og:image"]').attr("content")
+    const image = $('meta[property="og:image"]').attr("content") || ''
 
     let files = {}
     const scripts = $('script').filter((i, el) => $(el).html()?.includes('html5player'))
@@ -90,7 +89,7 @@ async function xnxxdl(URL) {
 }
 
 async function search(query) {
-    const res = await fetch(`https://www.xnxx.com/search/\( {query}/ \){Math.floor(Math.random() * 3) + 1}`)
+    const res = await fetch(`https://www.xnxx.com/search/\( {encodeURIComponent(query)}/ \){Math.floor(Math.random() * 3) + 1}`)
     const html = await res.text()
     const $ = cheerio.load(html)
     const results = []
