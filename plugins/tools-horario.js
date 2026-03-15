@@ -14,11 +14,14 @@ let handler = async (m) => {
     let texto = `💗 *HORA ACTUAL EN DIFERENTES ZONAS* 🌸\n\n`
 
     zonas.forEach(z => {
-        const hora = now.toLocaleTimeString('es-ES', { timeZone: z.tz, hour12: false })
-        texto += `🕒 \( {z.name}: * \){hora}*\n`
+        const hora = now.toLocaleTimeString('es-ES', { 
+            timeZone: z.tz, 
+            hour12: false 
+        })
+        texto += `🕒 *${z.name}:* ${hora}\n`
     })
 
-    texto += `\n¡Zero Two siempre despierta contigo darling\~! 💕`
+    texto += `\n¡Zero Two siempre está despierta contigo darling\~! 💕`
 
     return m.reply(texto)
 }
