@@ -1,55 +1,43 @@
 import fetch from 'node-fetch'
 import cheerio from 'cheerio'
 
-let handler = async (m, { args, usedPrefix, command }) => {
+let handler = async (m, { args, usedPrefix }) => {
     if (!global.db.data.chats[m.chat].nsfw) {
-        return m.reply('🚫 El contenido NSFW está desactivado en este grupo.\n\nUn administrador puede activarlo con:\n» *#nable nsfw on*')
+        return m.reply('🚫 El contenido NSFW está desactivado en este grupo.\n\nUn admin puede activarlo con *#nable nsfw on*')
     }
 
     const query = args.join(" ").trim()
     if (!query) {
-        return m.reply('Ingresa el título o URL del video de XNXX.\nEjemplo:\n*#xnxx mia khalifa* o *#xnxx https://xnxx.com/...*')
+        return m.reply('Ingresa el título o URL del video de XNXX.\nEjemplo: *#xnxx mia khalifa*')
     }
 
     try {
         const isUrl = query.includes("xnxx.com")
         if (isUrl) {
             const res = await xnxxdl(query)
-            if (!res.result?.files?.high && !res.result?.files?.low) throw new Error('No se encontró video')
-
             const dll = res.result.files.high || res.result.files.low
             const videoBuffer = await fetch(dll).then(r => r.buffer())
 
-            let caption = `*XNXX - DESCARGA EXITOSA*\n\n` +
+            let caption = `*XNXX - DESCARGA*\n\n` +
                           `Título: ${res.result.title}\n` +
                           `Duración: ${res.result.info.dur || 'Desconocida'}\n` +
-                          `Calidad: ${res.result.info.qual || 'Desconocida'}\n` +
-                          `Vistas: ${res.result.info.views || 'Desconocidas'}`
+                          `Calidad: ${res.result.info.qual || 'Desconocida'}`
 
             await conn.sendMessage(m.chat, {
                 video: videoBuffer,
                 caption: caption,
                 mimetype: 'video/mp4'
             }, { quoted: m })
-
             return
         }
 
-        // Búsqueda
         const res = await search(query)
-        if (!res.result?.length) {
-            return m.reply('No se encontraron resultados.')
-        }
-
         const list = res.result.slice(0, 10).map((v, i) => `${i+1}. ${v.title}\n   ${v.link}`).join('\n\n')
-        const caption = `*XNXX - BÚSQUEDA*\n\n${list}\n\n` +
-                        `Copia y pega la URL de uno de los videos para descargarlo con *#xnxx <url>*`
-
-        await m.reply(caption)
+        await m.reply(`*XNXX - BÚSQUEDA*\n\n${list}\n\nCopia la URL para descargar con #xnxx <url>`)
 
     } catch (e) {
-        console.error('XNXX ERROR:', e.message || e)
-        m.reply('Algo salió mal. Prueba con otro link o título.')
+        console.error(e)
+        m.reply('❌ Error al procesar el comando.')
     }
 }
 
@@ -59,12 +47,9 @@ async function xnxxdl(URL) {
     const $ = cheerio.load(html)
 
     const title = $('meta[property="og:title"]').attr("content") || $('title').text().trim()
-    const image = $('meta[property="og:image"]').attr("content") || ''
-
     let files = {}
-    const scripts = $('script').filter((i, el) => $(el).html()?.includes('html5player'))
-    const script = scripts.html() || ''
 
+    const script = $('script').filter((i, el) => $(el).html()?.includes('html5player')).html() || ''
     const lowMatch = script.match(/html5player\.setVideoUrlLow\('(.*?)'\)/)
     const highMatch = script.match(/html5player\.setVideoUrlHigh\('(.*?)'\)/)
 
@@ -74,9 +59,8 @@ async function xnxxdl(URL) {
     let info = $("span.metadata").text() || ""
     let dur = info.match(/(\d+\s?min)/i)?.[0] || 'Desconocida'
     let qual = info.match(/([0-9]{3,4}p)/i)?.[0] || 'Desconocida'
-    let views = info.match(/([0-9.,]+)\s*(views|vistas)/i)?.[1]?.replace(/[.,]/g, '') || 'Desconocidas'
 
-    return { result: { title, image, info: { dur, qual, views }, files } }
+    return { result: { title, info: { dur, qual }, files } }
 }
 
 async function search(query) {
