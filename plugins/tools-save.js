@@ -1,34 +1,34 @@
 let handler = async (m, { conn }) => {
-    // 1. Verificamos que esté respondiendo a algo
+    // 1. Verificación básica
     if (!m.quoted) {
         await m.react('⚠️')
-        return m.reply('💗 Darling~ responde al mensaje que quieres guardar para que te lo mande al privado.')
+        return m.reply('💗 Darling~ responde al mensaje que quieres guardar.')
     }
 
     await m.react('📦')
 
     try {
-        // Usamos el método copyNForward directamente desde el mensaje citado
-        // Esto es mucho más efectivo que llamarlo desde conn
-        await m.quoted.copyNForward(m.sender, true)
+        // 2. Obtenemos el mensaje citado de forma completa
+        let q = await m.getQuotedObj()
+        if (!q.message) throw 'Mensaje vacío'
+
+        // 3. Usamos copyNForward pero con el objeto REAL (q)
+        // Esto soluciona que te llegue el mensaje vacío al privado
+        await conn.copyNForward(m.sender, q, true)
         
-        // Si llega aquí, es que sí se envió
         await m.react('🍬')
-        // Opcional: Confirmación en el grupo
-        // await m.reply('✅ ¡Guardado en tu privado, darling! 🌸')
+        await m.reply('✅ ¡Listo mi amor! Revisa tu chat privado, ya te lo guardé~ 🌸')
 
     } catch (e) {
-        console.error("Error en save:", e)
+        console.error("Error crítico en save:", e)
         
-        // Si el método directo falla, intentamos el método manual de respaldo
+        // 4. ÚLTIMO RECURSO: Reenvío manual si copyNForward falla
         try {
-            let jid = m.sender
-            let msg = m.quoted.fakeObj
-            await conn.copyNForward(jid, msg, true)
+            await conn.sendMessage(m.sender, { forward: m.quoted.fakeObj }, { quoted: m.quoted.fakeObj })
             await m.react('🍬')
         } catch (err2) {
             await m.react('💔')
-            m.reply('💔 Darling, no pude reenviar el contenido. Asegúrate de que no sea un mensaje efímero o que el chat privado no esté bloqueado.')
+            m.reply('💔 Darling, parece que WhatsApp no me deja enviarte este mensaje específico al privado. ¡Intenta con otro!')
         }
     }
 }
