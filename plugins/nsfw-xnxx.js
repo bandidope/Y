@@ -3,16 +3,12 @@ import cheerio from 'cheerio'
 
 let handler = async (m, { args, usedPrefix, command }) => {
     if (!global.db.data.chats[m.chat].nsfw) {
-        await m.react('💔')
-        return m.reply(`ꕥ El contenido *NSFW* está desactivado en este grupo.\n\nUn *administrador* puede activarlo con:\n» *${usedPrefix}nable nsfw on*`)
+        return m.reply('🚫 El contenido NSFW está desactivado en este grupo.\n\nUn administrador puede activarlo con:\n» *#nable nsfw on*')
     }
-
-    await m.react('🍬')
 
     const query = args.join(" ").trim()
     if (!query) {
-        await m.react('🌸')
-        return m.reply(`💗 Ingresa el título o URL del video de XNXX darling\~\nEjemplo:\n*#xnxx mia khalifa* o *#xnxx https://xnxx.com/...*`)
+        return m.reply('Ingresa el título o URL del video de XNXX.\nEjemplo:\n*#xnxx mia khalifa* o *#xnxx https://xnxx.com/...*')
     }
 
     try {
@@ -24,12 +20,11 @@ let handler = async (m, { args, usedPrefix, command }) => {
             const dll = res.result.files.high || res.result.files.low
             const videoBuffer = await fetch(dll).then(r => r.buffer())
 
-            let caption = `💗 *XNXX - DESCARGA EXITOSA!* 🌸\n\n` +
+            let caption = `*XNXX - DESCARGA EXITOSA*\n\n` +
                           `Título: ${res.result.title}\n` +
                           `Duración: ${res.result.info.dur || 'Desconocida'}\n` +
                           `Calidad: ${res.result.info.qual || 'Desconocida'}\n` +
-                          `Vistas: ${res.result.info.views || 'Desconocidas'}\n\n` +
-                          `¡Disfrútalo mi amor\~ no me dejes sola! 💕`
+                          `Vistas: ${res.result.info.views || 'Desconocidas'}`
 
             await conn.sendMessage(m.chat, {
                 video: videoBuffer,
@@ -37,28 +32,24 @@ let handler = async (m, { args, usedPrefix, command }) => {
                 mimetype: 'video/mp4'
             }, { quoted: m })
 
-            await m.react('💗')
             return
         }
 
         // Búsqueda
         const res = await search(query)
         if (!res.result?.length) {
-            await m.react('💔')
-            return m.reply('💔 No se encontraron resultados darling\~')
+            return m.reply('No se encontraron resultados.')
         }
 
         const list = res.result.slice(0, 10).map((v, i) => `${i+1}. ${v.title}\n   ${v.link}`).join('\n\n')
-        const caption = `💗 *XNXX - BÚSQUEDA!* 🌸\n\n${list}\n\n` +
+        const caption = `*XNXX - BÚSQUEDA*\n\n${list}\n\n` +
                         `Copia y pega la URL de uno de los videos para descargarlo con *#xnxx <url>*`
 
         await m.reply(caption)
-        await m.react('💗')
 
     } catch (e) {
         console.error('XNXX ERROR:', e.message || e)
-        await m.react('💔')
-        m.reply(`💔 Uy darling... algo salió mal\~\nError: ${e.message || 'Desconocido'}`)
+        m.reply('Algo salió mal. Prueba con otro link o título.')
     }
 }
 
