@@ -14,28 +14,17 @@ let handler = async (m, { conn }) => {
     try {
         let img = await q.download()
 
-        // Primera API (mejor calidad)
-        let response = await fetch('https://api.itsrose.rest/image/unblur', {
+        // API más estable actualmente
+        let response = await fetch('https://api.akuari.my.id/image/upscale', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                image: `data:image/jpeg;base64,${img.toString('base64')}`,
-                server: 'google'
+                image: `data:image/jpeg;base64,${img.toString('base64')}`
             })
         })
 
         let json = await response.json()
-        let imageUrl = json.result?.url
-
-        // Backup si falla
-        if (!imageUrl) {
-            let backup = await fetch('https://skizo.tech/api/remini', {
-                method: 'POST',
-                body: JSON.stringify({ url: `data:image/jpeg;base64,${img.toString('base64')}` })
-            })
-            let backupJson = await backup.json()
-            imageUrl = backupJson.url
-        }
+        let imageUrl = json.result || json.url
 
         if (!imageUrl) throw new Error('No se pudo mejorar')
 
@@ -47,7 +36,7 @@ let handler = async (m, { conn }) => {
         await m.react('✅')
 
     } catch (e) {
-        console.error(e)
+        console.error('HD ERROR:', e)
         await m.react('❌')
         m.reply('💔 *Los servidores de HD están saturados.*\n\nPrueba enviando la foto de nuevo.')
     }
