@@ -1,48 +1,59 @@
-import axios from 'axios'
+import fetch from 'node-fetch'
 
-let handler = async (m, { conn, usedPrefix, command }) => {
+let handler = async (m, { conn }) => {
     let q = m.quoted ? m.quoted : m
     let mime = (q.msg || q).mimetype || ''
 
-    if (!mime) throw `🌸 *¡Darling, necesito una imagen!* 🌸\n\nResponde a una foto o envía una con el comando *${usedPrefix + command}*`
-    
+    if (!mime || !mime.startsWith('image/')) {
+        await m.react('🌸')
+        return m.reply('🌸 *¡Darling, necesito una imagen!* 🌸\n\nResponde a una foto con *#hd*')
+    }
+
     await m.react('⏳')
-    
+
     try {
         let img = await q.download()
-        
-        // Convertimos la imagen a Base64 para enviarla a la API
-        let imageData = img.toString('base64')
-        
-        // Usamos una API alternativa de mejora (Upscale)
-        // Esta es una ruta de procesamiento común en los modelos de IA actuales
-        let response = await axios.post('https://api.itsrose.rest/image/unblur', {
-            server: 'google',
-            image: `data:image/jpeg;base64,${imageData}`
-        }, {
-            params: { apikey: 'Rk-ZeroTwo' }, // Algunos servidores usan keys genéricas
-            responseType: 'arraybuffer'
-        }).catch(async () => {
-            // SEGUNDO INTENTO si la anterior falla (Servidor de respaldo)
-            return await axios.post('https://skizo.tech/api/remini', {
-                url: `data:image/jpeg;base64,${imageData}`
-            }, { responseType: 'arraybuffer' })
+
+        // Primera API (mejor calidad)
+        let response = await fetch('https://api.itsrose.rest/image/unblur', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                image: `data:image/jpeg;base64,${img.toString('base64')}`,
+                server: 'google'
+            })
         })
 
-        if (!response.data) throw 'Error de datos'
+        let json = await response.json()
+        let imageUrl = json.result?.url
 
-        await conn.sendFile(m.chat, response.data, 'hd.jpg', '💗 *¡Listo darling! Calidad mejorada para ti.* 🌸', m)
+        // Backup si falla
+        if (!imageUrl) {
+            let backup = await fetch('https://skizo.tech/api/remini', {
+                method: 'POST',
+                body: JSON.stringify({ url: `data:image/jpeg;base64,${img.toString('base64')}` })
+            })
+            let backupJson = await backup.json()
+            imageUrl = backupJson.url
+        }
+
+        if (!imageUrl) throw new Error('No se pudo mejorar')
+
+        await conn.sendMessage(m.chat, {
+            image: { url: imageUrl },
+            caption: '💗 *¡Imagen mejorada con éxito!* 🌸'
+        }, { quoted: m })
+
         await m.react('✅')
 
     } catch (e) {
         console.error(e)
-        // Si todo falla, intentamos usar un método de "filtro" rápido
         await m.react('❌')
-        m.reply('💔 *Los servidores de HD están saturados.* \n\nPrueba enviando la foto de nuevo, a veces es solo un pequeño glitch del servidor.')
+        m.reply('💔 *Los servidores de HD están saturados.*\n\nPrueba enviando la foto de nuevo.')
     }
 }
 
-handler.help = ['hd']
+handler.help = ['hd', 'remini', 'upscale']
 handler.tags = ['tools']
 handler.command = ['hd', 'remini', 'upscale']
 handler.register = true
