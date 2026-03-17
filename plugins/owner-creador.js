@@ -1,21 +1,48 @@
 let handler = async (m, { conn }) => {
-    await m.react('🍬')
+  try {
+    // 💗 Reacción estilo Zero Two
+    await conn.sendMessage(m.chat, {
+      react: { text: '💗', key: m.key }
+    });
 
-    const creatorMsg = `💗 *¡Mi creador darling!* 🌸\n\n` +
-                       `Creador Supremo 💕\n` +
-                       `Contacto: wa.me/573107400303\n\n` +
-                       `───────────────\n\n` +
-                       `BOT PRINCIPAL\n` +
-                       `Zore Two 💗\n` +
-                       `Contacto: wa.me/573508941325\n\n` +
-                       `¡Escríbeme con cariño que soy tu waifu favorita! 😼`
+    // 📞 Datos del owner
+    let numberOwner = '573107400303';
+    let nombreOwner = '♡ 𝓐 - 𝑪𝒓𝒆𝒂𝒅𝒐𝒓 ♡';
 
-    await m.reply(creatorMsg)
-    await m.react('💗')
-}
+    // 📇 vCard
+    let vcardOwner = `BEGIN:VCARD
+VERSION:3.0
+N:${nombreOwner};;;
+FN:${nombreOwner}
+TEL;type=CELL;type=VOICE;waid=${numberOwner}:${numberOwner}
+END:VCARD`;
 
-handler.help = ['creador', 'owner']
-handler.tags = ['main']
-handler.command = ['creador', 'owner', 'creator', 'dueño']
+    // 💬 Mensaje estilo anime
+    let texto = `╭━━━〔 ♡ 𝒁𝒆𝒓𝒐 𝑻𝒘𝒐 ♡ 〕━━━⬣
+┃ ❥ Aquí está mi creador
+┃ ❥ Puedes hablar con él si me necesitas
+┃ ❥ No seas tímido... 💗
+╰━━━━━━━━━━━━━━━━⬣`;
 
-export default handler
+    // 📩 Enviar mensaje
+    await conn.sendMessage(m.chat, { text: texto }, { quoted: m });
+
+    // 📇 Enviar contacto
+    await conn.sendMessage(m.chat, {
+      contacts: {
+        displayName: nombreOwner,
+        contacts: [{ vcard: vcardOwner }]
+      }
+    }, { quoted: m });
+
+  } catch (e) {
+    console.error(e);
+    await m.reply('♡ Ocurrió un error... inténtalo otra vez');
+  }
+};
+
+handler.help = ['owner'];
+handler.tags = ['main'];
+handler.command = ['owner', 'creator', 'creador', 'dueño'];
+
+export default handler;
