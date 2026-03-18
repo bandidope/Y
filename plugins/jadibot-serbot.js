@@ -4,214 +4,50 @@ import {
   makeCacheableSignalKeyStore,
   fetchLatestBaileysVersion,
   Browsers
-} from "@whiskeysockets/baileys";
-import qrcode from "qrcode";
-import NodeCache from "node-cache";
-import fs from "fs";
-import path from "path";
-import pino from 'pino';
-import chalk from 'chalk';
-import { makeWASocket } from '@whiskeysockets/baileys';
-import { smsg } from '../lib/simple.js';
-import { handler, loadEvents } from '../handler.js';
-import { database } from '../lib/database.js';
-import { fileURLToPath } from 'url';
+} from "@whiskeysockets/baileys"
+import qrcode from "qrcode"
+import NodeCache from "node-cache"
+import fs from "fs"
+import path from "path"
+import pino from 'pino'
+import chalk from 'chalk'
+import { makeWASocket } from '@whiskeysockets/baileys'
+import { smsg } from '../lib/simple.js'
+import { handler, loadEvents } from '../handler.js'
+import { database } from '../lib/database.js'
+import { fileURLToPath } from 'url'
 
-const __filename = fileURLToPath(import.meta.url);
+const __filename = fileURLToPath(import.meta.url)
 
-if (!Array.isArray(global.conns)) global.conns = [];
+if (!Array.isArray(global.conns)) global.conns = []
 
-const MAX_SUBBOTS = 15;
-const MAX_PER_USER = 2;
-const COOLDOWN_MS = 120000;
+// ====================== MODO MANTENIMIENTO ======================
+const MENSAJE_MANTENIMIENTO = `✦ Zero Two
 
-const generarMensajeCodigo = (nombre) => `✦ Zero Two
+  ◆ Comando en mantenimiento
 
-  ◆ Bienvenido, ${nombre}
+  ✧ Método › Code / Serbot
+  
+  › Estamos trabajando para mejorar el sistema de SubBots
+  › Espere las actualizaciones en el canal oficial
+  
+  › Canal: https://whatsapp.com/channel/0029Vb6p68rF6smrH4Jeay3Y
 
-  ✧ Método de conexión › Código
+  ¡Gracias por tu paciencia! Pronto volverá a estar disponible 🚀`
 
-  › Abre WhatsApp en tu dispositivo
-  › Toca los tres puntos en la esquina superior
-  › Selecciona Dispositivos vinculados
-  › Toca Vincular un dispositivo
-  › Presiona Vincular con número de teléfono
-  › Ingresa el código que aparece abajo`;
-
-const generarMensajeQR = (nombre) => `✦ Zero Two
-
-  ◆ Bienvenido, ${nombre}
-
-  ✧ Método de conexión › QR
-
-  › Pulsa los tres puntos en la esquina superior
-  › Toca Dispositivos vinculados
-  › Selecciona Vincular un dispositivo
-  › Escanea el código QR
-
-  ◇ Este código expira en 45 segundos`;
-
-const generarMensajeExito = (nombre, metodo) => `✦ Zero Two
-
-  ◆ Conexión exitosa
-
-  ✧ Usuario  › ${nombre}
-  ✧ Método   › ${metodo}
-  ✧ Browser  › ${metodo === 'Código' ? 'Chrome · MacOS' : 'Safari · MacOS'}
-
-  › Ya puedes usar comandos desde este dispositivo`;
-
-function cleanPhoneNumber(phone) {
-  if (!phone) return null;
-  const cleaned = phone.replace(/[^^-9]/g, '');
-  return cleaned.length >= 10 && cleaned.length <= 15 ? cleaned : null;
-}
-
-function msToTime(duration) {
-  const seconds = Math.floor((duration / 1000) % 60);
-  const minutes = Math.floor((duration / (1000 * 60)) % 60);
-  const hours = Math.floor((duration / (1000 * 60 * 60)) % 24);
-  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-}
-
-function isSocketReady(sock) {
-  if (!sock) return false;
-  const hasWs = sock.ws?.socket?.readyState === 1;
-  const hasUser = sock.user?.jid;
-  return hasWs && hasUser;
-}
-
-setInterval(() => {
-  try {
-    if (!global.conns.length) return;
-    const before = global.conns.length;
-    global.conns = global.conns.filter(conn => {
-      if (!conn || !conn.user || !isSocketReady(conn)) {
-        try {
-          conn?.ws?.close();
-          conn?.ev?.removeAllListeners();
-        } catch {}
-        return false;
-      }
-      return true;
-    });
-    const removed = before - global.conns.length;
-    if (removed > 0) console.log(chalk.blue(`[\~] Limpiados ${removed} SubBots inactivos`));
-  } catch (error) {
-    console.error('Error en limpieza:', error.message);
-  }
-}, 60000);
+// ============================================================
 
 let pluginHandler = async (m, { conn, args, prefix, isOwner }) => {
-  const userId = m.sender;
-  const now = Date.now();
+  // Solo mostramos el mensaje de mantenimiento (sin crear nada)
+  await m.reply(MENSAJE_MANTENIMIENTO)
+}
 
-  if (!database.data.users[userId]) database.data.users[userId] = {};
-  if (!database.data.users[userId].Subs) database.data.users[userId].Subs = 0;
+pluginHandler.help = ['code', 'serbot']
+pluginHandler.tags = ['serbot']
+pluginHandler.command = ['code', 'serbot']
 
-  const lastUse = database.data.users[userId].Subs;
+export default pluginHandler
 
-  if (now - lastUse < COOLDOWN_MS) {
-    const remaining = msToTime(COOLDOWN_MS - (now - lastUse));
-    return m.reply(`✦ Zero Two\n\n  ◇ Espera antes de usar este comando nuevamente.\n  ✧ Tiempo restante › ${remaining}`);
-  }
-
-  const activeCount = global.conns.filter(c => isSocketReady(c)).length;
-  if (activeCount >= MAX_SUBBOTS) {
-    return m.reply(`✦ Zero Two\n\n  ◇ Límite de SubBots alcanzado.\n  ✧ Activos › ${activeCount} / ${MAX_SUBBOTS}`);
-  }
-
-  const userPhone = cleanPhoneNumber(m.sender);
-  if (userPhone) {
-    const userCount = global.conns.filter(c =>
-      isSocketReady(c) && cleanPhoneNumber(c.user?.jid) === userPhone
-    ).length;
-
-    if (userCount >= MAX_PER_USER) {
-      return m.reply(`✦ Zero Two\n\n  ◇ Ya tienes el máximo de SubBots activos.\n  ✧ Tus activos › ${userCount} / ${MAX_PER_USER}\n  › Usa ${prefix}stop para desconectar uno`);
-    }
-  }
-
-  const sessionId = m.sender.split('@')[0];
-  const sessionPath = path.join('./Sessions/SubBots', sessionId);
-
-  if (!fs.existsSync(sessionPath)) {
-    fs.mkdirSync(sessionPath, { recursive: true });
-  }
-
-  database.data.users[userId].Subs = now;
-
-  const commandUsed = m.body.trim().slice(prefix.length).trim().split(/ +/)[0].toLowerCase();
-  const useCode = commandUsed === 'code';
-
-  await startSubBot({ m, conn, args, prefix, sessionPath, useCode });
-};
-
-pluginHandler.help = ['code', 'serbot'];
-pluginHandler.tags = ['serbot'];
-pluginHandler.command = ['code', 'serbot'];
-
-export default pluginHandler;
-
-async function startSubBot({ m, conn, args, prefix, sessionPath, useCode }) {
-  const sessionId = path.basename(sessionPath);
-  const metodoUsado = useCode ? 'Código' : 'QR';
-
-  // Nombre del usuario (se calcula una sola vez)
-  let nombreUsuario = 'Usuario';
-  try {
-    nombreUsuario = await conn.getName(m.sender) || m.pushName || 'Usuario';
-  } catch {
-    nombreUsuario = m.pushName || 'Usuario';
-  }
-
-  try {
-    const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
-    const { version } = await fetchLatestBaileysVersion();
-    const msgRetryCache = new NodeCache();
-
-    const connectionOptions = {
-      version,
-      logger: pino({ level: 'fatal' }),
-      printQRInTerminal: false,
-      auth: {
-        creds: state.creds,
-        keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
-      },
-      msgRetryCache,
-      browser: useCode ? Browsers.macOS('Chrome') : Browsers.macOS('Safari'),
-      generateHighQualityLinkPreview: true,
-      markOnlineOnConnect: false,
-      syncFullHistory: false,
-      getMessage: async () => '',
-      keepAliveIntervalMs: 45000
-    };
-
-    const sock = makeWASocket(connectionOptions);
-    sock.sessionPath = sessionPath;
-
-    // ==================== FIX PRINCIPAL ====================
-    // El código de emparejamiento ahora se genera INMEDIATAMENTE después de crear el socket
-    // (esto es lo correcto en Baileys actual). Ya no depende del evento "qr".
-    // Se usa try/catch para no romper en reconexiones (sesión ya existente).
-    if (useCode) {
-      try {
-        let secret = await sock.requestPairingCode(m.sender.split('@')[0]);
-        secret = secret?.match(/.{1,4}/g)?.join('-') || secret;
-
-        const txtCode = await conn.sendMessage(m.chat, {
-          text: generarMensajeCodigo(nombreUsuario)
-        }, { quoted: m });
-
-        const codeBot = await m.reply(`> ${secret}`);
-
-        console.log(chalk.bold.greenBright(`\n◆ Código generado para ${nombreUsuario}: ${secret}\n`));
-
-        if (txtCode?.key) {
-          setTimeout(() => conn.sendMessage(m.chat, { delete: txtCode.key }).catch(() => {}), 30000);
-        }
-        if (codeBot?.key) {
-          setTimeout(() => conn.sendMessage(m.chat, { delete: codeBot.key }).catch(() => {}), 30000);
-        }
-      } catch (e) {
-        console.error('Error generando código (posible recon
+// (El resto del código original queda aquí pero NO se usa mientras esté en mantenimiento)
+// Puedes dejar las funciones startSubBot, cleanPhoneNumber, etc. abajo si quieres,
+// pero como el comando ya no las llama, no afectará.
