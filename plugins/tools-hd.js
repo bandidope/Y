@@ -37,7 +37,7 @@ let handler = async (m, { conn }) => {
 
         // API 3 - Betabotz (último intento)
         if (!url) {
-            res = await fetch('https://api.betabotz.org/api/tools/remini', {
+            res = await fetch('https://rest.apicausas.xyz', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ url: base64 })
