@@ -1,20 +1,25 @@
 import { database } from '../lib/database.js'
 
-let handler = async (m, { command }) => {
-    if (!m.isGroup) return m.reply('💔 Este comando solo funciona en grupos darling\~')
-    if (!m.isAdmin && !m.isOwner) return m.reply('💔 Solo admins y owner pueden usar este comando')
+let handler = async (m, { args, prefix, command }) => {
+    // 1. Extraemos el primer argumento (on u off)
+    let action = args[0]?.toLowerCase()
 
-    if (!database.data.groups[m.chat]) {
-        database.data.groups[m.chat] = {}
+    if (action !== 'on' && action !== 'off') {
+        return m.reply(`✦ 𝓩𝓮𝓻𝓸 𝓣𝔀𝓸\n\n⚠️ Uso incorrecto, darling.\nEjemplo: *${prefix + command} on* o *${prefix + command} off*`)
     }
 
-    const estado = command === 'on' ? true : false
+    // 2. Iniciación Forzada (Blindaje de Base de Datos)
+    if (!database.data.groups) database.data.groups = {}
+    if (!database.data.groups[m.chat]) database.data.groups[m.chat] = {}
 
+    // 3. Aplicamos el estado boolean
+    const estado = action === 'on'
     database.data.groups[m.chat].bot = estado
 
+    // 4. Mensaje estético
     const mensaje = estado 
-        ? '✅ *Bot activado* en este grupo.\nAhora responderé normalmente a todos.' 
-        : '❌ *Bot desactivado* en este grupo.\nSolo responderé a comandos de owner.'
+        ? '✦ 𝓩𝓮𝓻𝓸 𝓣𝔀𝓸\n\n✅ *Bot activado*\nAhora responderé a todos en este grupo, darling~' 
+        : '✦ 𝓩𝓮𝓻𝓸 𝓣𝔀𝓸\n\n❌ *Bot desactivado*\nAhora estaré en silencio. Solo escucharé a mis creadores.'
 
     await m.reply(mensaje)
     await m.react(estado ? '✅' : '❌')
@@ -23,7 +28,9 @@ let handler = async (m, { command }) => {
 handler.help = ['bot on', 'bot off']
 handler.tags = ['group']
 handler.command = ['bot']
-handler.group = true
+
+// Estas propiedades ya hacen el trabajo de bloquear si no es grupo o si no es admin
+handler.group = true 
 handler.admin = true
 
 export default handler
