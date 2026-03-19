@@ -4,10 +4,6 @@ function isFacebook(url = '') {
   return /facebook\.com|fb\.watch/i.test(url)
 }
 
-function toMbasic(url) {
-  return url.replace('www.facebook.com', 'mbasic.facebook.com')
-}
-
 function clean(str) {
   return str?.replace(/\\u0025/g, '%').replace(/\\\//g, '/')
 }
@@ -15,26 +11,33 @@ function clean(str) {
 async function fetchHTML(url) {
   const res = await fetch(url, {
     headers: {
-      "User-Agent": "Mozilla/5.0",
-      "Accept-Language": "es-ES,es;q=0.9"
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+      "Accept": "text/html,application/xhtml+xml",
+      "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+      "Cache-Control": "no-cache",
+      "Pragma": "no-cache"
     }
   })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return await res.text()
 }
 
-function extractVideo(html) {
-  let hd = html.match(/"playable_url_quality_hd":"([^"]+)"/)
-  let sd = html.match(/"playable_url":"([^"]+)"/)
-  if (hd) return clean(hd[1])
-  if (sd) return clean(sd[1])
-  return null
-}
+function extractAll(html) {
+  let results = []
 
-function extractMbasic(html) {
-  let match = html.match(/<a[^>]+href="([^"]+)"[^>]*>Ver video<\/a>/i)
-  if (match) return 'https://mbasic.facebook.com' + match[1].replace(/&amp;/g, '&')
-  return null
+  let hd = html.match(/"playable_url_quality_hd":"([^"]+)"/g)
+  let sd = html.match(/"playable_url":"([^"]+)"/g)
+
+  if (hd) hd.forEach(x => results.push(clean(x.split('"')[3])))
+  if (sd) sd.forEach(x => results.push(clean(x.split('"')[3])))
+
+  let browser = html.match(/"browser_native_hd_url":"([^"]+)"/g)
+  if (browser) browser.forEach(x => results.push(clean(x.split('"')[3])))
+
+  let fallback = html.match(/https:\/\/video\.[^"]+\.fbcdn\.net[^"]+/g)
+  if (fallback) fallback.forEach(x => results.push(clean(x)))
+
+  return [...new Set(results)]
 }
 
 let handler = async (m, { conn, args }) => {
@@ -44,67 +47,49 @@ let handler = async (m, { conn, args }) => {
   if (!isFacebook(url)) return m.reply('❌ Link inválido')
 
   try {
-    await m.reply('🧪 DEBUG: Iniciando descarga...')
+    await m.reply('🧪 DEBUG: Iniciando scraping avanzado...')
 
     const html = await fetchHTML(url)
-    await m.reply(`🧪 DEBUG: HTML cargado (${html.length} chars)`)
+    await m.reply(`🧪 DEBUG: HTML cargado (${html.length})`)
 
-    let video = extractVideo(html)
+    const videos = extractAll(html)
 
-    if (video) {
-      await m.reply('🧪 DEBUG: Video encontrado en HTML principal (HD/SD)')
+    if (videos.length > 0) {
+      await m.reply(`🧪 DEBUG: ${videos.length} URLs encontradas`)
       await conn.sendMessage(m.chat, {
-        video: { url: video },
+        video: { url: videos[0] },
         caption: '✅ Video descargado'
       }, { quoted: m })
       return
     }
 
-    await m.reply('🧪 DEBUG: No encontrado, probando mbasic...')
+    await m.reply('🧪 DEBUG: Intentando fbcdn directo...')
 
-    const mbasicUrl = toMbasic(url)
-    const html2 = await fetchHTML(mbasicUrl)
-    await m.reply(`🧪 DEBUG: mbasic cargado (${html2.length} chars)`)
+    let direct = html.match(/https:\/\/video\.[^"]+\.fbcdn\.net[^"]+/)
 
-    const next = extractMbasic(html2)
-
-    if (!next) {
-      await m.reply('🧪 DEBUG: No se encontró link en mbasic')
-      throw new Error('NO_LINK_MBASIC')
-    }
-
-    await m.reply('🧪 DEBUG: Entrando a página de video mbasic...')
-
-    const html3 = await fetchHTML(next)
-    const video2 = extractVideo(html3)
-
-    if (video2) {
-      await m.reply('🧪 DEBUG: Video encontrado en mbasic')
+    if (direct) {
+      let vid = clean(direct[0])
+      await m.reply('🧪 DEBUG: URL encontrada en fbcdn')
       await conn.sendMessage(m.chat, {
-        video: { url: video2 },
+        video: { url: vid },
         caption: '✅ Video descargado'
       }, { quoted: m })
       return
     }
 
-    await m.reply('🧪 DEBUG: Tampoco se encontró video en mbasic final')
-    throw new Error('VIDEO_NOT_FOUND')
+    await m.reply('🧪 DEBUG: No se encontró nada en ningún método')
+    throw new Error('NO_VIDEO_FOUND')
 
   } catch (e) {
     let msg = '❌ Error\n\n'
 
     if (e.message.includes('HTTP')) {
-      msg += '🌐 Error de conexión\n'
-      msg += e.message
-    } else if (e.message === 'NO_LINK_MBASIC') {
-      msg += '🔍 mbasic no devolvió enlace\n'
-      msg += '💡 Puede ser reel o privado'
-    } else if (e.message === 'VIDEO_NOT_FOUND') {
-      msg += '🚫 No se encontró video\n'
-      msg += '💡 Probablemente es reel o protegido'
+      msg += '🌐 Error de conexión\n' + e.message
+    } else if (e.message === 'NO_VIDEO_FOUND') {
+      msg += '🚫 Facebook bloqueó el scraping\n'
+      msg += '💡 Probablemente es reel o requiere login'
     } else {
-      msg += '⚠️ Error inesperado\n'
-      msg += e.message
+      msg += '⚠️ Error inesperado\n' + e.message
     }
 
     await m.reply(msg)
