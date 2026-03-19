@@ -1,51 +1,90 @@
-import axios from 'axios'
+import fetch from 'node-fetch'
 
-const handler = async (msg, { conn, args, usedPrefix, command }) => {
-  const query = args.join(' ').trim()
+function isInstagram(url = '') {
+  return /instagram\.com/i.test(url)
+}
 
-  if (!query) {
-    await conn.sendMessage(
-      msg.chat,
-      { text: `❌ *Error:*\n> Debes escribir la URL del video de Instagram.` },
-      { quoted: msg }
-    )
+function clean(str) {
+  return str?.replace(/\\u0025/g, '%').replace(/\\\//g, '/')
+}
 
-    return
-  }
+async function fetchHTML(url) {
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+      "Accept": "text/html,application/xhtml+xml",
+      "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+      "Cache-Control": "no-cache",
+      "Pragma": "no-cache"
+    }
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return await res.text()
+}
 
-  await conn.sendMessage(
-    msg.chat,
-    { text: '*📥 Descargando video de Instagram...*' },
-    { quoted: msg }
-  )
+function extractVideo(html) {
+  let results = []
+
+  let video1 = html.match(/"video_url":"([^"]+)"/g)
+  if (video1) video1.forEach(x => results.push(clean(x.split('"')[3])))
+
+  let video2 = html.match(/"video_versions":\[\{"type":[^}]+,"url":"([^"]+)"/g)
+  if (video2) video2.forEach(x => {
+    let m = x.match(/"url":"([^"]+)"/)
+    if (m) results.push(clean(m[1]))
+  })
+
+  let fallback = html.match(/https:\/\/[^"]+\.cdninstagram\.com[^"]+\.mp4[^"]*/g)
+  if (fallback) fallback.forEach(x => results.push(clean(x)))
+
+  return [...new Set(results)]
+}
+
+let handler = async (m, { conn, args }) => {
+  const url = args[0]
+
+  if (!url) return m.reply('⚠️ Ingresa un link de Instagram')
+  if (!isInstagram(url)) return m.reply('❌ Link inválido')
 
   try {
-    const api = `https://nexevo-api.vercel.app/download/instagram?url=${encodeURIComponent(query)}`
-    const { data } = await axios.get(api)
+    await conn.sendMessage(m.chat, {
+      react: { text: '🕒', key: m.key }
+    })
 
-    if (!data?.status || !data?.result?.dl)
-      throw new Error('Error en descarga.')
+    const html = await fetchHTML(url)
+    const videos = extractVideo(html)
 
-    await conn.sendMessage(
-      msg.chat,
-      {
-        video: { url: data.result.dl },
-        caption: '✅ Video descargado exitosamente'
-      },
-      { quoted: msg }
-    )
+    if (videos.length > 0) {
+      await conn.sendMessage(m.chat, {
+        video: { url: videos[0] },
+        caption: '✅ Video descargado'
+      }, { quoted: m })
+
+      await conn.sendMessage(m.chat, {
+        react: { text: '✅', key: m.key }
+      })
+
+      return
+    }
+
+    throw new Error('NO_VIDEO_FOUND')
 
   } catch (e) {
-    await conn.sendMessage(
-      msg.chat,
-      { text: `❌ Error:\n${e.message}` },
-      { quoted: msg }
-    )
+    let msg = '❌ Error\n\n'
+
+    if (e.message.includes('HTTP')) {
+      msg += '🌐 Error de conexión\n' + e.message
+    } else if (e.message === 'NO_VIDEO_FOUND') {
+      msg += '🚫 No se encontró el video\n'
+      msg += '💡 Puede ser privado o requerir login'
+    } else {
+      msg += '⚠️ Error inesperado\n' + e.message
+    }
+
+    await m.reply(msg)
   }
 }
 
-handler.help = ['ig <url>', 'instagram <url>']
-handler.tags = ['download']
-handler.command = ['ig', 'instagram']
+handler.command = ['ig']
 
 export default handler
