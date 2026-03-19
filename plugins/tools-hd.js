@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto'
+import { downloadMediaMessage } from '@whiskeysockets/baileys'
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36'
 const PUBLIC_JWT = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiIiLCJhdWQiOiIiLCJpYXQiOjE1MjMzNjQ4MjQsIm5iZiI6MTUyMzM2NDgyNCwianRpIjoicHJvamVjdF9wdWJsaWNfYzkwNWRkMWMwMWU5ZmQ3NzY5ODNjYTQwZDBhOWQyZjNfT1Vzd2EwODA0MGI4ZDJjN2NhM2NjZGE2MGQ2MTBhMmRkY2U3NyJ9.qvHSXgCJgqpC4gd6-paUlDLFmg0o2DsOvb1EUYPYx_E'
@@ -28,9 +29,7 @@ function multipart(fields, fileField) {
 }
 
 async function startTask() {
-  const resp = await fetch(`https://api.iloveimg.com/v1/start/${TOOL}`, {
-    headers: BASE_HEADERS
-  })
+  const resp = await fetch(`https://api.iloveimg.com/v1/start/${TOOL}`, { headers: BASE_HEADERS })
   if (!resp.ok) throw new Error(`Error inicio tarea (${resp.status})`)
   const data = await resp.json()
   return { server: data.server, task: data.task }
@@ -95,7 +94,12 @@ let handler = async (m, { conn, usedPrefix, command }) => {
   m.react('⏳')
 
   try {
-    let media = await conn.downloadMediaMessage(q)
+    let media = await downloadMediaMessage(
+      q,
+      'buffer',
+      {},
+      { logger: console, reuploadRequest: conn.updateMediaMessage }
+    )
     let filename = `upscale_${Date.now()}.jpg`
 
     const resultBuffer = await iloveimgUpscale(media, filename)
