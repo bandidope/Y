@@ -16,21 +16,32 @@ function isValidVideo(url = '') {
   return url.includes('.mp4') && url.includes('cdninstagram')
 }
 
-async function fetchData(url) {
-  const res = await fetch(url, {
-    headers: {
-      "User-Agent": "Mozilla/5.0 (Linux; Android 10)",
-      "Accept": "*/*",
-      "Accept-Language": "es-ES,es;q=0.9",
-      "Referer": "https://www.instagram.com/"
-    }
-  })
+function headers() {
+  return {
+    "User-Agent": "Mozilla/5.0 (Linux; Android 11)",
+    "Accept": "*/*",
+    "Accept-Language": "es-ES,es;q=0.9",
+    "Referer": "https://www.instagram.com/"
+  }
+}
 
+async function fetchText(url) {
+  const res = await fetch(url, { headers: headers() })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return await res.text()
 }
 
-function extractVideo(html) {
+async function fetchJSON(url) {
+  const res = await fetch(url, { headers: headers() })
+  if (!res.ok) return null
+  try {
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+
+function extractFromHTML(html) {
   let results = []
 
   let og = html.match(/property="og:video" content="([^"]+)"/)
@@ -39,12 +50,42 @@ function extractVideo(html) {
   let json = html.match(/"video_url":"([^"]+)"/g)
   if (json) {
     json.forEach(x => {
-      let url = x.split('"')[3]
-      results.push(clean(url))
+      results.push(clean(x.split('"')[3]))
     })
   }
 
   return [...new Set(results)]
+}
+
+async function tryEmbed(url) {
+  try {
+    let api = `https://api.instagram.com/oembed/?url=${encodeURIComponent(url)}`
+    let data = await fetchJSON(api)
+    return data?.thumbnail_url || null
+  } catch {
+    return null
+  }
+}
+
+async function tryA1(url) {
+  try {
+    let api = url.split('?')[0] + '?__a=1&__d=dis'
+    let data = await fetchJSON(api)
+
+    let media = data?.graphql?.shortcode_media
+
+    if (media?.video_url) return media.video_url
+
+    if (media?.edge_sidecar_to_children?.edges) {
+      for (let x of media.edge_sidecar_to_children.edges) {
+        if (x.node.video_url) return x.node.video_url
+      }
+    }
+
+    return null
+  } catch {
+    return null
+  }
 }
 
 async function checkVideo(url) {
@@ -68,8 +109,20 @@ let handler = async (m, { conn, args }) => {
       react: { text: '🕒', key: m.key }
     })
 
-    const html = await fetchData(url)
-    let videos = extractVideo(html)
+    let videos = []
+
+    let html = await fetchText(url)
+    videos.push(...extractFromHTML(html))
+
+    if (videos.length === 0) {
+      let a1 = await tryA1(url)
+      if (a1) videos.push(a1)
+    }
+
+    if (videos.length === 0) {
+      let embed = await tryEmbed(url)
+      if (embed) videos.push(embed)
+    }
 
     videos = videos.filter(v => isValidVideo(v))
 
@@ -86,7 +139,7 @@ let handler = async (m, { conn, args }) => {
 
     await conn.sendMessage(m.chat, {
       video: { url: valid },
-      caption: '✅ Video descargado'
+      caption: '✅ Video descargado AUTO'
     }, { quoted: m })
 
     await conn.sendMessage(m.chat, {
@@ -98,11 +151,9 @@ let handler = async (m, { conn, args }) => {
 
     if (e.message.includes('HTTP')) {
       msg += '🌐 Error de conexión\n' + e.message
-    } else if (e.message === 'NO_VIDEO') {
-      msg += '🚫 Instagram bloqueó el scraping\n'
-      msg += '💡 Prueba otro link o más tarde'
     } else {
-      msg += '⚠️ Error inesperado\n' + e.message
+      msg += '🚫 Instagram bloqueó el scraping\n'
+      msg += '💡 Intenta otro link o más tarde'
     }
 
     await m.reply(msg)
