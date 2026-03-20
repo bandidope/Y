@@ -84,6 +84,21 @@ async function tryGraphQL(shortcode) {
   }
 }
 
+async function tryExternalAPI(url) {
+  try {
+    const res = await fetch(`http://173.208.200.227:4005/download/instagram?url=${encodeURIComponent(url)}`)
+    const json = await res.json()
+
+    if (json?.status && json?.result?.dl && isValidVideo(json.result.dl)) {
+      return json.result.dl
+    }
+
+    return null
+  } catch {
+    return null
+  }
+}
+
 let handler = async (m, { conn, args }) => {
   const url = args[0]
 
@@ -104,13 +119,26 @@ let handler = async (m, { conn, args }) => {
     }
 
     if (videos.length === 0) {
-      let html = await fetchHTML(url)
-      videos.push(...extractFromHTML(html))
+      try {
+        let html = await fetchHTML(url)
+        videos.push(...extractFromHTML(html))
+      } catch {}
     }
 
     videos = videos.filter(v => isValidVideo(v))
 
     let valid = videos[0] || null
+
+    if (!valid) {
+      let retries = 2
+      while (retries--) {
+        let ext = await tryExternalAPI(url)
+        if (ext) {
+          valid = ext
+          break
+        }
+      }
+    }
 
     if (!valid) throw new Error('NO_VIDEO')
 
@@ -130,7 +158,7 @@ let handler = async (m, { conn, args }) => {
       msg += '🌐 Error de conexión\n' + e.message
     } else {
       msg += '🚫 Instagram bloqueó el acceso\n'
-      msg += '💡 Prueba con otro reel público'
+      msg += '💡 Intenté múltiples métodos sin éxito'
     }
 
     await m.reply(msg)
