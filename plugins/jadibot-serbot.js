@@ -25,42 +25,44 @@ const MAX_SUBBOTS = 15
 const MAX_PER_USER = 2
 const COOLDOWN_MS = 120000
 
-const generarMensajeCodigo = (nombre) => `✦ Zero Two
+// --- ESTÉTICA ZERO TWO ---
+const prefixZT = '🌸 𝐙𝐞𝐫𝐨-𝐓𝐰𝐨'
 
-  ◆ Bienvenido, ${nombre}
+const generarMensajeCodigo = (nombre) => `${prefixZT} 🌸
 
-  ✧ Método de conexión › Código
+  Darling, aquí tienes tu código de conexión:
+  👤 Usuario: ${nombre}
   
-  › Abre WhatsApp en tu dispositivo
-  › Toca los tres puntos en la esquina superior
-  › Selecciona Dispositivos vinculados
-  › Toca Vincular un dispositivo
-  › Presiona Vincular con número de teléfono
-  › Ingresa el código que aparece abajo`
+  ✨ Pasos:
+  1️⃣ Abre WhatsApp en tu celular.
+  2️⃣ Toca los 3 puntitos arriba a la derecha.
+  3️⃣ Dispositivos vinculados > Vincular un dispositivo.
+  4️⃣ Abajo, elige "Vincular con número de teléfono".
+  5️⃣ Pon el código de abajo.`
 
-const generarMensajeQR = (nombre) => `✦ Zero Two
+const generarMensajeQR = (nombre) => `${prefixZT} 🌸
 
-  ◆ Bienvenido, ${nombre}
-
-  ✧ Método de conexión › QR
+  Darling, escanea este QR para conectarte:
+  👤 Usuario: ${nombre}
   
-  › Pulsa los tres puntos en la esquina superior
-  › Toca Dispositivos vinculados
-  › Selecciona Vincular un dispositivo
-  › Escanea el código QR
+  ✨ Pasos:
+  1️⃣ Abre WhatsApp.
+  2️⃣ Toca los 3 puntitos > Dispositivos vinculados.
+  3️⃣ Escanea este QR.
 
-  ◇ Este código expira en 45 segundos`
+  ⚠️ Expira en 45 segundos.`
 
-const generarMensajeExito = (nombre, metodo) => `✦ Zero Two
+const generarMensajeExito = (nombre, metodo) => `${prefixZT} 🌸
 
-  ◆ Conexión exitosa
+  ¡Conexión exitosa, Darling! 💞
 
-  ✧ Usuario  › ${nombre}
-  ✧ Método   › ${metodo}
-  ✧ Browser  › ${metodo === 'Código' ? 'Chrome · MacOS' : 'Safari · MacOS'}
+  👤 Usuario: ${nombre}
+  ⚙️ Método: ${metodo}
+  🌐 Sistema: ${metodo === 'Código' ? 'Chrome · MacOS' : 'Safari · MacOS'}
 
-  › Ya puedes usar comandos desde este dispositivo`
+  Ya puedes usar mis comandos desde tu número.`
 
+// --- FUNCIONES AUXILIARES ---
 function cleanPhoneNumber(phone) {
   if (!phone) return null
   const cleaned = phone.replace(/[^0-9]/g, '')
@@ -81,6 +83,7 @@ function isSocketReady(sock) {
   return hasWs && hasUser
 }
 
+// --- LIMPIEZA DE MEMORIA ---
 setInterval(() => {
   try {
     if (!global.conns.length) return
@@ -96,13 +99,14 @@ setInterval(() => {
       return true
     })
     const removed = before - global.conns.length
-    if (removed > 0) console.log(chalk.blue(`[~] Limpiados ${removed} SubBots inactivos`))
+    if (removed > 0) console.log(chalk.red(`[Zero-Two] 🧹 Limpiados ${removed} SubBots inactivos.`))
   } catch (error) {
-    console.error('Error en limpieza:', error.message)
+    console.error(chalk.red(`[Zero-Two] ❌ Error en limpieza:`, error.message))
   }
 }, 60000)
 
-let pluginHandler = async (m, { conn, args, prefix, isOwner }) => {
+// --- EJECUCIÓN DEL COMANDO ---
+let pluginHandler = async (m, { conn, args, prefix, command }) => {
   const userId = m.sender
   const now = Date.now()
 
@@ -113,12 +117,12 @@ let pluginHandler = async (m, { conn, args, prefix, isOwner }) => {
 
   if (now - lastUse < COOLDOWN_MS) {
     const remaining = msToTime(COOLDOWN_MS - (now - lastUse))
-    return m.reply(`✦ Zero Two\n\n  ◇ Espera antes de usar este comando nuevamente.\n  ✧ Tiempo restante › ${remaining}`)
+    return m.reply(`${prefixZT} 🌸\n\nDarling, ve más despacio. Espera ${remaining} para volver a intentarlo.`)
   }
 
   const activeCount = global.conns.filter(c => isSocketReady(c)).length
   if (activeCount >= MAX_SUBBOTS) {
-    return m.reply(`✦ Zero Two\n\n  ◇ Límite de SubBots alcanzado.\n  ✧ Activos › ${activeCount} / ${MAX_SUBBOTS}`)
+    return m.reply(`${prefixZT} 🌸\n\nLo siento Darling, el límite de SubBots está lleno (${activeCount}/${MAX_SUBBOTS}).`)
   }
 
   const userPhone = cleanPhoneNumber(m.sender)
@@ -128,7 +132,7 @@ let pluginHandler = async (m, { conn, args, prefix, isOwner }) => {
     ).length
 
     if (userCount >= MAX_PER_USER) {
-      return m.reply(`✦ Zero Two\n\n  ◇ Ya tienes el máximo de SubBots activos.\n  ✧ Tus activos › ${userCount} / ${MAX_PER_USER}\n  › Usa ${prefix}stop para desconectar uno`)
+      return m.reply(`${prefixZT} 🌸\n\nYa tienes el máximo de sesiones permitidas (${userCount}/${MAX_PER_USER}).\nUsa ${prefix}stop para apagar una.`)
     }
   }
 
@@ -141,8 +145,8 @@ let pluginHandler = async (m, { conn, args, prefix, isOwner }) => {
 
   database.data.users[userId].Subs = now
 
-  const commandUsed = m.body.trim().slice(prefix.length).trim().split(/ +/)[0].toLowerCase()
-  const useCode = commandUsed === 'code'
+  // Optimizado: Usamos el command directamente en vez de m.body
+  const useCode = command === 'code'
 
   await startSubBot({ m, conn, args, prefix, sessionPath, useCode })
 }
@@ -153,6 +157,7 @@ pluginHandler.command = ['code', 'serbot']
 
 export default pluginHandler
 
+// --- LÓGICA DEL SUBBOT ---
 async function startSubBot({ m, conn, args, prefix, sessionPath, useCode }) {
   const sessionId = path.basename(sessionPath)
   const metodoUsado = useCode ? 'Código' : 'QR'
@@ -165,7 +170,7 @@ async function startSubBot({ m, conn, args, prefix, sessionPath, useCode }) {
 
     const connectionOptions = {
       version,
-      logger: pino({ level: 'fatal' }),
+      logger: pino({ level: 'fatal' }), // Consola limpia
       printQRInTerminal: false,
       auth: {
         creds: state.creds,
@@ -186,13 +191,12 @@ async function startSubBot({ m, conn, args, prefix, sessionPath, useCode }) {
     sock.ev.on('connection.update', async update => {
       const { connection, lastDisconnect, qr } = update
 
-      let nombreUsuario = 'Usuario'
+      let nombreUsuario = m.pushName || 'Darling'
       try {
-        nombreUsuario = await conn.getName(m.sender) || m.pushName || 'Usuario'
-      } catch {
-        nombreUsuario = m.pushName || 'Usuario'
-      }
+        nombreUsuario = await conn.getName(m.sender) || nombreUsuario
+      } catch {}
 
+      // Generar QR
       if (qr && !useCode) {
         txtQR = await conn.sendMessage(m.chat, {
           image: await qrcode.toBuffer(qr, { scale: 8 }),
@@ -205,23 +209,27 @@ async function startSubBot({ m, conn, args, prefix, sessionPath, useCode }) {
         return
       }
 
+      // Generar Código
       if (qr && useCode) {
         try {
           let secret = await sock.requestPairingCode(m.sender.split('@')[0])
           secret = secret?.match(/.{1,4}/g)?.join('-') || secret
           txtCode = await conn.sendMessage(m.chat, { text: generarMensajeCodigo(nombreUsuario) }, { quoted: m })
           codeBot = await m.reply(`> ${secret}`)
-          console.log(chalk.bold.greenBright(`\n◆ Código generado para ${nombreUsuario}: ${secret}\n`))
+          
+          console.log(chalk.bold.magentaBright(`\n[Zero-Two] 🌸 Código para ${nombreUsuario}: ${secret}\n`))
+          
           if (txtCode?.key) setTimeout(() => conn.sendMessage(m.chat, { delete: txtCode.key }).catch(() => {}), 30000)
           if (codeBot?.key) setTimeout(() => conn.sendMessage(m.chat, { delete: codeBot.key }).catch(() => {}), 30000)
         } catch (e) {
-          console.error('Error generando código:', e.message)
+          console.error(chalk.red(`[Zero-Two] ❌ Error generando código:`, e.message))
         }
         return
       }
 
+      // Conectado
       if (connection === 'open') {
-        console.log(chalk.cyanBright(`\n◆ ${nombreUsuario} (+${sessionId}) conectado · Método: ${metodoUsado}`))
+        console.log(chalk.greenBright(`\n[Zero-Two] 🌸 ${nombreUsuario} (+${sessionId}) se unió. Método: ${metodoUsado}`))
 
         sock.startTime = Date.now()
         await loadEvents(sock).catch(() => {})
@@ -230,16 +238,16 @@ async function startSubBot({ m, conn, args, prefix, sessionPath, useCode }) {
         if (idx !== -1) global.conns.splice(idx, 1)
         global.conns.push(sock)
 
-        console.log(chalk.greenBright(`[SUBBOTS] Total subbots activos: ${global.conns.length}`))
+        console.log(chalk.cyanBright(`[Zero-Two] 📊 Total subbots activos: ${global.conns.length}`))
 
         await conn.sendMessage(m.chat, {
           text: generarMensajeExito(nombreUsuario, metodoUsado)
         }, { quoted: m }).catch(() => {})
       }
 
+      // Desconectado
       if (connection === 'close') {
         const reason = lastDisconnect?.error?.output?.statusCode
-
         global.conns = global.conns.filter(c => c.sessionPath !== sessionPath)
 
         if ([
@@ -249,19 +257,20 @@ async function startSubBot({ m, conn, args, prefix, sessionPath, useCode }) {
           DisconnectReason.timedOut,
           DisconnectReason.badSession
         ].includes(reason)) {
-          console.log(chalk.magentaBright(`\n◆ Reconectando SubBot (+${sessionId})... Razón: ${reason}`))
-          startSubBot({ m, conn, args, prefix, sessionPath, useCode })
+          console.log(chalk.yellow(`\n[Zero-Two] 🔄 Reconectando (+${sessionId})... Razón: ${reason}`))
+          // Retraso de 3 segundos para no saturar si hay ciclo infinito de caídas
+          setTimeout(() => startSubBot({ m, conn, args, prefix, sessionPath, useCode }), 3000)
         } else if ([
           DisconnectReason.loggedOut,
           DisconnectReason.forbidden
         ].includes(reason)) {
-          console.log(chalk.magentaBright(`\n◆ Sesión (+${sessionId}) cerrada. Eliminando...`))
+          console.log(chalk.redBright(`\n[Zero-Two] 💔 Sesión (+${sessionId}) cerrada. Limpiando archivos...`))
           fs.rmSync(sessionPath, { recursive: true, force: true })
         } else if (reason === 440) {
-          console.log(chalk.magentaBright(`\n◆ Sesión (+${sessionId}) reemplazada por otra activa.`))
+          console.log(chalk.blue(`\n[Zero-Two] ⚠️ Sesión (+${sessionId}) reemplazada por otra.`))
         } else {
-          console.log(chalk.yellow(`\n◆ Desconexión desconocida SubBot (+${sessionId}): ${reason}`))
-          startSubBot({ m, conn, args, prefix, sessionPath, useCode })
+          console.log(chalk.yellow(`\n[Zero-Two] ❓ Caída desconocida (+${sessionId}): ${reason}`))
+          setTimeout(() => startSubBot({ m, conn, args, prefix, sessionPath, useCode }), 3000)
         }
       }
     })
@@ -284,12 +293,12 @@ async function startSubBot({ m, conn, args, prefix, sessionPath, useCode }) {
         msg = smsg(sock, msg)
         await handler(msg, sock, global.plugins)
       } catch (e) {
-        console.error(`Error en mensaje subbot [${sessionId}]:`, e.message)
+        console.error(chalk.red(`[Zero-Two] ❌ Error en handler [${sessionId}]:`), e.message)
       }
     })
 
   } catch (error) {
-    console.error(chalk.red(`[x] Error iniciando SubBot [${sessionId}]: ${error.message}`))
-    await m.reply(`✦ Zero Two\n\n  ◇ Error al crear el SubBot.\n  ✧ Detalle › ${error.message}`)
+    console.error(chalk.red(`[Zero-Two] ❌ Error crítico en [${sessionId}]: ${error.message}`))
+    await m.reply(`${prefixZT} 🌸\n\nDarling, hubo un error al crear la sesión.\nDetalle: ${error.message}`)
   }
 }
