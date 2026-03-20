@@ -13,16 +13,15 @@ function clean(str = '') {
 }
 
 function isValidVideo(url = '') {
-  return url.includes('.mp4') && url.includes('cdninstagram')
+  return url.includes('.mp4')
 }
 
 function getHeaders() {
   return {
-    "User-Agent": "Instagram 300.0.0.0 Android",
+    "User-Agent": "Mozilla/5.0 (Linux; Android 10)",
     "Accept": "*/*",
     "Accept-Language": "es-ES,es;q=0.9",
     "X-IG-App-ID": "936619743392459",
-    "X-Requested-With": "XMLHttpRequest",
     "Referer": "https://www.instagram.com/"
   }
 }
@@ -52,29 +51,21 @@ function extractFromHTML(html) {
   return [...new Set(results)]
 }
 
-async function tryInternalAPI(shortcode) {
+async function tryGraphQL(shortcode) {
   try {
-    let url = `https://www.instagram.com/api/v1/media/${shortcode}/info/`
+    const url = `https://www.instagram.com/graphql/query/?query_hash=9f8827793ef34641b2fb195d4d41151c&variables=${encodeURIComponent(JSON.stringify({
+      shortcode,
+      child_comment_count: 3,
+      fetch_comment_count: 40,
+      parent_comment_count: 24,
+      has_threaded_comments: true
+    }))}`
 
-    let res = await fetch(url, { headers: getHeaders() })
+    const res = await fetch(url, { headers: getHeaders() })
     if (!res.ok) return null
 
-    let json = await res.json()
-
-    let video = json?.items?.[0]?.video_versions?.[0]?.url
-    return video || null
-  } catch {
-    return null
-  }
-}
-
-async function tryA1(url) {
-  try {
-    let api = url.split('?')[0] + '?__a=1&__d=dis'
-    let res = await fetch(api, { headers: getHeaders() })
-    let json = await res.json()
-
-    let media = json?.graphql?.shortcode_media
+    const json = await res.json()
+    const media = json?.data?.shortcode_media
 
     if (media?.video_url) return media.video_url
 
@@ -112,17 +103,11 @@ let handler = async (m, { conn, args }) => {
     })
 
     let videos = []
-
     const shortcode = getShortcode(url)
 
     if (shortcode) {
-      let internal = await tryInternalAPI(shortcode)
-      if (internal) videos.push(internal)
-    }
-
-    if (videos.length === 0) {
-      let a1 = await tryA1(url)
-      if (a1) videos.push(a1)
+      let gql = await tryGraphQL(shortcode)
+      if (gql) videos.push(gql)
     }
 
     if (videos.length === 0) {
@@ -145,7 +130,7 @@ let handler = async (m, { conn, args }) => {
 
     await conn.sendMessage(m.chat, {
       video: { url: valid },
-      caption: '✅ Video descargado (C avanzado)'
+      caption: '✅ Video descargado'
     }, { quoted: m })
 
     await conn.sendMessage(m.chat, {
@@ -158,8 +143,8 @@ let handler = async (m, { conn, args }) => {
     if (e.message.includes('HTTP')) {
       msg += '🌐 Error de conexión\n' + e.message
     } else {
-      msg += '🚫 Instagram bloqueó el scraping\n'
-      msg += '💡 Algunos reels no se pueden sin sesión'
+      msg += '🚫 Instagram bloqueó el acceso\n'
+      msg += '💡 Intenta con otro reel público'
     }
 
     await m.reply(msg)
@@ -167,5 +152,4 @@ let handler = async (m, { conn, args }) => {
 }
 
 handler.command = ['ig']
-
 export default handler
