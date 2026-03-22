@@ -1,55 +1,50 @@
-case 'kira':
-case 'juicio': {
-    const target = m.mentionedJid ? m.mentionedJid[0] : null;
+import { generateWAMessageFromContent } from '@whiskeysockets/baileys'; // ← AÑADE ESTA LÍNEA AL INICIO DEL ARCHIVO
 
-    if (!target) {
-        return reply('👁️ _𝕯𝖊𝖇𝖊𝖘 𝖈𝖔𝖓𝖔𝖈𝖊𝖗 𝖊𝖑 𝖗𝖔𝖘𝖙𝖗𝖔 𝖞 𝖊𝖑 𝖓𝖔𝖒𝖇𝖗𝖊._\n\nEtiqueta al criminal que deseas juzgar.');
-    }
+let handler = async (m, { conn, who, prefix }) => {
+    // Mantenemos el 'who' que ya te da el bot + respaldo por si acaso
+    who = who || m.mentionedJid?.[0];
+    if (!who) return m.reply(`👁️ 𝕰𝖙𝖎𝖖𝖚𝖊𝖙𝖆 𝖆 𝖆𝖑𝖌𝖚𝖎𝖊𝖓 𝖕𝖆𝖗𝖆 𝖏𝖚𝖟𝖌𝖆𝖗𝖑𝖔.`);
 
-    if (target === sender) {
-        return reply('📝 _𝕶𝖎𝖗𝖆 𝖓𝖔 𝖕𝖚𝖊𝖉𝖊 𝖏𝖚𝖟𝖌𝖆𝖗𝖘𝖊 𝖆 𝖘𝖎́ 𝖒𝖎𝖘𝖒𝖔..._');
-    }
-
-    // Historia narrativa con tipografía Gótica (Copia y pega tal cual)
     let kiraText = `🩸 *𝕰𝖑 𝖏𝖚𝖎𝖈𝖎𝖔 𝖍𝖆 𝖈𝖔𝖒𝖊𝖓𝖟𝖆𝖉𝖔* 🩸\n\n` +
-                   `_Has estado observando a @${target.split('@')[0]}..._\n` +
-                   `_Sus crímenes son imperdonables. Tienes la pluma en tu mano y la libreta abierta._\n\n` +
-                   `¿𝕼𝖚𝖊́ 𝖉𝖊𝖘𝖙𝖎𝖓𝖔 𝖑𝖊 𝖊𝖘𝖕𝖊𝖗𝖆?`;
+                   `_¿Qué destino le espera a @${who.split('@')[0]}?_`;
 
-    // Estructura de botones interactivos (Baileys v6+)
-    const interactiveMessage = {
+    const buttons = [
+        { 
+            "name": "quick_reply", 
+            "buttonParamsJson": `{"display_text":"💔 Ataque Cardiaco","id":"\( {prefix}dn @ \){who.split('@')[0]} Ataque al corazón"}` 
+        },
+        { 
+            "name": "quick_reply", 
+            "buttonParamsJson": `{"display_text":"🚗 Accidente","id":"\( {prefix}dn @ \){who.split('@')[0]} Accidente de tráfico"}` 
+        },
+        { 
+            "name": "quick_reply", 
+            "buttonParamsJson": `{"display_text":"🕊️ Perdonar","id":"${prefix}say Kira ha decidido tener piedad."}` 
+        }
+    ];
+
+    // Estructura CORRECTA y estable
+    const messageContent = {
         viewOnceMessage: {
             message: {
-                messageContextInfo: {
-                    deviceListMetadata: {},
-                    deviceListMetadataVersion: 2
-                },
                 interactiveMessage: {
                     body: { text: kiraText },
-                    footer: { text: 'Z0RT SYSTEMS ⚡ 𝕯𝖊𝖆𝖙𝖍 𝕹𝖔𝖙𝖊' },
-                    header: { title: '📓 𝕰𝖑 𝕯𝖎𝖔𝖘 𝖉𝖊𝖑 𝕹𝖚𝖊𝖛𝖔 𝕸𝖚𝖓𝖉𝖔', hasMediaAttachment: false },
-                    nativeFlowMessage: {
-                        buttons: [
-                            {
-                                "name": "quick_reply",
-                                "buttonParamsJson": `{"display_text":"💔 Ataque al Corazón","id":"kira_ataque_${target}"}`
-                            },
-                            {
-                                "name": "quick_reply",
-                                "buttonParamsJson": `{"display_text":"🚗 Accidente Trágico","id":"kira_accidente_${target}"}`
-                            },
-                            {
-                                "name": "quick_reply",
-                                "buttonParamsJson": `{"display_text":"🕊️ Perdonar Vida","id":"kira_perdonar_${target}"}`
-                            }
-                        ]
-                    }
+                    footer: { text: '𝖅0𝕽𝕿 𝕾𝖄𝕾𝕿𝕰𝕸𝕾' },
+                    header: { 
+                        title: '📓 𝕵𝖚𝖎𝖈𝖎𝖔 𝖉𝖊 𝕶𝖎𝖗𝖆', 
+                        hasMediaAttachment: false 
+                    },
+                    nativeFlowMessage: { buttons }
                 }
             }
         }
     };
 
-    // Enviamos el mensaje con la mención para que el @usuario se ilumine
-    await conn.relayMessage(m.chat, interactiveMessage.viewOnceMessage.message, { messageId: m.key.id });
-}
-break;
+    const msg = generateWAMessageFromContent(m.chat, messageContent, {});
+    await conn.relayMessage(m.chat, msg.message, { messageId: msg.key.id });
+};
+
+handler.command = ['kira', 'juzgar'];
+handler.group = true;
+
+export default handler;
