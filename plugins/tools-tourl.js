@@ -1,3 +1,5 @@
+// dejar créditos a IAM-GABRIEL 
+
 import { downloadContentFromMessage } from '@whiskeysockets/baileys'
 import FormData from 'form-data'
 import axios from 'axios'
