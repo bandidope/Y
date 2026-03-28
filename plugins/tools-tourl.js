@@ -69,57 +69,61 @@ async function uploadCausas(buffer, mime) {
   return url
 }
 
-let handler = async (m, { conn }) => {
+let handler = async (m, { conn, command }) => {
   try {
     const user = m.sender
 
-    if (sessions.has(user)) {
-      const choice = m.body.toLowerCase().trim()
+    // 🔥 RESPUESTA A LA PREGUNTA
+    if (m.quoted && sessions.has(user)) {
       const session = sessions.get(user)
 
-      if (!/catbox|causas/.test(choice)) {
-        return m.reply('❌ Responde con *catbox* o *causas*')
+      const isReplyToBot = m.quoted?.sender === conn.user.id.split(':')[0] + '@s.whatsapp.net'
+
+      if (isReplyToBot && (command === 'catbox' || command === 'causas')) {
+
+        sessions.delete(user)
+
+        await m.react('⏳')
+
+        const buffer = await downloadMedia(session.media.data, session.type)
+        const mime = session.media.data.mimetype || 'application/octet-stream'
+
+        let url
+
+        if (command === 'catbox') {
+          url = await uploadCatbox(buffer)
+        } else {
+          url = await uploadCausas(buffer, mime)
+        }
+
+        await conn.sendMessage(m.chat, {
+          text: `✅ Subido a *${command}*\n\n${url}`
+        }, { quoted: m })
+
+        return m.react('✅')
       }
-
-      sessions.delete(user)
-
-      await m.react('⏳')
-
-      const buffer = await downloadMedia(session.media.data, session.type)
-      const mime = session.media.data.mimetype || 'application/octet-stream'
-
-      let url
-
-      if (choice === 'catbox') {
-        url = await uploadCatbox(buffer)
-      } else {
-        url = await uploadCausas(buffer, mime)
-      }
-
-      await conn.sendMessage(m.chat, {
-        text: `✅ Subido a *${choice}*\n\n${url}`
-      }, { quoted: m })
-
-      return m.react('✅')
     }
 
-    const msg = m.quoted ? m.quoted : m
-    const media = getMedia(msg.message)
+    // 🔥 COMANDO PRINCIPAL
+    if (command === 'tourl') {
+      const msg = m.quoted ? m.quoted : m
+      const media = getMedia(msg.message)
 
-    if (!media)
-      return m.reply('❌ Responde a un archivo')
+      if (!media)
+        return m.reply('❌ Responde a un archivo')
 
-    sessions.set(user, {
-      media,
-      type: media.type === 'sticker' ? 'sticker' : media.type
-    })
+      sessions.set(user, {
+        media,
+        type: media.type === 'sticker' ? 'sticker' : media.type
+      })
 
-    await m.reply(
-      `📤 Detectado: *${media.type}*\n\n` +
-      `¿A dónde deseas subirlo?\n\n` +
-      `• catbox\n` +
-      `• causas`
-    )
+      await m.reply(
+        `📤 Detectado: *${media.type}*\n\n` +
+        `Responde a este mensaje con:\n\n` +
+        `👉 *.catbox*\n` +
+        `👉 *.causas*`
+      )
+    }
 
   } catch (e) {
     sessions.delete(m.sender)
@@ -128,7 +132,7 @@ let handler = async (m, { conn }) => {
   }
 }
 
-handler.command = ['tourl']
+handler.command = ['tourl', 'catbox', 'causas']
 handler.help = ['tourl']
 handler.tags = ['herramientas']
 
