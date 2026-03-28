@@ -1,3 +1,4 @@
+import { downloadContentFromMessage } from '@whiskeysockets/baileys'
 import fs from 'fs'
 import path from 'path'
 import FormData from 'form-data'
@@ -18,8 +19,8 @@ function getMedia(msg) {
   return null
 }
 
-async function downloadMedia(conn, media, type) {
-  const stream = await conn.wa.downloadContentFromMessage(
+async function downloadMedia(media, type) {
+  const stream = await downloadContentFromMessage(
     media,
     type === 'sticker' ? 'sticker' : type
   )
@@ -48,24 +49,25 @@ async function upload(buffer) {
     maxBodyLength: Infinity
   })
 
-  if (!res.data) throw 'Catbox sin respuesta'
+  if (!res.data) throw new Error('Catbox sin respuesta')
   return res.data.trim()
 }
 
 let handler = async (m, { conn }) => {
   try {
-    const quoted = m.quoted ? m.quoted : m
-    const media = getMedia(quoted.message)
+    const msg = m.quoted ? m.quoted : m
+    const media = getMedia(msg.message)
 
     if (!media) return m.reply('Responde a una imagen, video, sticker o audio')
 
     await m.react('☁️')
 
-    const buffer = await downloadMedia(conn, media.data, media.type)
+    const buffer = await downloadMedia(media.data, media.type)
 
-    if (!buffer) throw 'No se pudo descargar'
+    if (!buffer.length) throw new Error('No se pudo descargar')
 
-    if (buffer.length > 200 * 1024 * 1024) throw 'Archivo mayor a 200MB'
+    if (buffer.length > 200 * 1024 * 1024)
+      throw new Error('Archivo mayor a 200MB')
 
     let finalBuffer = buffer
 
