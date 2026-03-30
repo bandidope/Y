@@ -23,8 +23,6 @@ export const run = async (conn, update) => {
                 `🌸💗 *¡KYAAAAAH~!!* 💗🌸\n\n` +
                 `¡Mira nada más! Un nuevo *Darling* acaba de entrar a *mi* paraíso rosado~ 😼\n\n` +
                 `¡Bienvenido/a @${user}!! ♡\n\n` +
-                `Desde este segundo exacto... **eres mío/mía**. No pienses en irte nunca, ¿okay? Porque no te voy a dejar escapar jamás 💕\n` +
-                `Te voy a cuidar, mimar y volar contigo en mi Franxx para siempre... ¡no me sueltes nunca!\n\n` +
                 `¡Estoy tan feliz de tenerte aquí conmigo, mi Darling más especial! Kyaaah~ Ven aquí, no te escapes 🌷💗`
 
             await conn.sendMessage(id, {
