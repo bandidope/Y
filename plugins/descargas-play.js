@@ -1,5 +1,7 @@
-import axios from 'axios'
+import fetch from 'node-fetch'
 import yts from 'yt-search'
+
+const API_KEY = 'causa-ec43262f206b3305'
 
 const handler = async (msg, { conn, args, usedPrefix, command }) => {
   const query = args.join(' ').trim()
@@ -24,14 +26,14 @@ const handler = async (msg, { conn, args, usedPrefix, command }) => {
 
     const video = search.videos[0]
 
-    const api = `https://nex-magical.vercel.app/download/y?url=${encodeURIComponent(video.url)}`
-    const { data } = await axios.get(api)
+    const api = `https://rest.apicausas.xyz/api/v1/descargas/youtube?url=${encodeURIComponent(video.url)}&type=audio&apikey=${API_KEY}`
+    const res = await fetch(api)
+    const data = await res.json()
 
-    if (!data?.status || !data?.result?.status || !data?.result?.url)
-      throw new Error('Error en descarga.')
+    if (!data?.data?.download?.url) throw new Error('Error en descarga.')
 
-    const title = data.result.info?.title || video.title || 'audio'
-    const thumbnail = video.thumbnail || video.image || null
+    const title = data.data.info?.title || video.title || 'audio'
+    const thumbnail = data.data.info?.thumbnail || video.thumbnail || null
 
     const info = `🎵 *${title}*\n` +
       `👤 Canal: ${video.author?.name || 'Desconocido'}\n` +
@@ -42,10 +44,7 @@ const handler = async (msg, { conn, args, usedPrefix, command }) => {
     if (thumbnail) {
       await conn.sendMessage(
         msg.chat,
-        {
-          image: { url: thumbnail },
-          caption: info
-        },
+        { image: { url: thumbnail }, caption: info },
         { quoted: msg }
       )
     } else {
@@ -59,7 +58,7 @@ const handler = async (msg, { conn, args, usedPrefix, command }) => {
     await conn.sendMessage(
       msg.chat,
       {
-        audio: { url: data.result.url },
+        audio: { url: data.data.download.url },
         mimetype: 'audio/mpeg',
         fileName: `${sanitizeFilename(title)}.mp3`
       },
