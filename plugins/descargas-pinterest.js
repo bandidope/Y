@@ -60,19 +60,19 @@ let handler = async (m, { conn, args, prefix }) => {
     await m.reply('🌸 Buscando imágenes en Pinterest, espera un momento~')
 
     try {
-        const res = await fetch(`https://rest.alyabotpe.xyz/search/pinterest?query=${encodeURIComponent(text)}&key=Duarte-zz12`)
+        const res = await fetch(`https://nex-magical.vercel.app/search/pinterest?q=${encodeURIComponent(text)}&apikey=NEX-Magical`)
 
         if (!res.ok) throw new Error(`Error en la API: ${res.status} ${res.statusText}`)
 
         const data = await res.json()
 
-        if (!data.status || data.status !== true || !Array.isArray(data.data) || data.data.length < 2) {
+        if (!data.status || !Array.isArray(data.result) || data.result.length < 2) {
             return m.reply('💔 No encontré suficientes imágenes, darling... prueba con otra búsqueda~')
         }
 
-        const images = data.data.slice(0, 10).map(img => ({
+        const images = data.result.slice(0, 10).map(img => ({
             type: 'image',
-            data: { url: img.hd }
+            data: { url: img.image_large_url }
         }))
 
         const caption = `🌸 *Resultados para:* ${text}\n💗 *~Zero Two*`
