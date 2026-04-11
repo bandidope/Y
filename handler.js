@@ -118,6 +118,41 @@ export const handler = async (m, conn, plugins) => {
 
         m = await smsg(conn, m);
 
+const btn =
+    m.message?.buttonsResponseMessage ||
+    m.message?.templateButtonReplyMessage ||
+    m.message?.listResponseMessage
+
+if (btn) {
+    const cmd =
+        btn.selectedButtonId ||
+        btn.singleSelectReply?.selectedRowId
+
+    if (cmd && typeof cmd === 'string') {
+        const clean = cmd.trim()
+
+        if (clean) {
+            m.message = { conversation: clean }
+            m.text = clean
+            m.body = clean
+
+            const senderId =
+                m.participant ||
+                m.key?.participant ||
+                m.key?.remoteJid ||
+                ''
+
+            if (m.sender !== senderId) {
+                Object.defineProperty(m, 'sender', {
+                    value: senderId,
+                    writable: true,
+                    configurable: true
+                })
+            }
+        }
+    }
+}
+
         if (m.isGroup) {
             const muted = database.data?.groups?.[m.chat]?.muted || []
             if (muted.includes(m.sender)) {
