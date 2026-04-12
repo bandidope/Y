@@ -1,5 +1,4 @@
 import { Sticker, StickerTypes } from 'wa-sticker-formatter'
-import { downloadMediaMessage } from '@whiskeysockets/baileys'
 
 let handler = async (m, { conn, args, command, usedPrefix }) => {
     let q = m.quoted ? m.quoted : m
@@ -45,6 +44,6 @@ let handler = async (m, { conn, args, command, usedPrefix }) => {
 
 handler.help = ['s', 'sticker', 'stiker']
 handler.tags = ['stickers']
-handler.command = /^(s|sticker|stiker)$/i
+handler.command = ['s', 'sticker', 'stiker']
 
 export default handler
