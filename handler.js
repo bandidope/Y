@@ -70,7 +70,6 @@ export const loadEvents = async (conn) => {
     try {
         files = readdirSync(eventsPath).filter(f => f.endsWith('.js'))
     } catch {
-        console.log(chalk.yellow('[EVENTS] Carpeta ./events no encontrada, omitiendo...'))
         return
     }
 
@@ -87,9 +86,7 @@ export const loadEvents = async (conn) => {
                 mod.run(conn, data)
             })
 
-        } catch (e) {
-            console.log(chalk.red('[EVENTS ERROR]'), e.message)
-        }
+        } catch {}
     }
 }
 
@@ -335,106 +332,31 @@ export const handler = async (m, conn, plugins) => {
                 plugins
             })
         } catch (e) {
-            console.log(chalk.red('[ERROR COMANDO DETECTADO]'), e)
-
-            const name = e?.name || 'Error'
             const message = e?.message || String(e)
-
             const stackLines = e?.stack?.split('\n') || []
-            const stack = stackLines.slice(0, 8).join('\n')
 
             let file = null
             let line = null
-            let column = null
 
             for (const l of stackLines) {
                 const match = l.match(/\((.*plugins.*):(\d+):(\d+)\)/)
                 if (match) {
                     file = match[1]
                     line = match[2]
-                    column = match[3]
                     break
                 }
-            }
-
-            const status = e?.response?.status || e?.status || null
-            const statusText = e?.response?.statusText || ''
-
-            const data = e?.response?.data || e?.data || null
-            const headers = e?.response?.headers || null
-
-            const url =
-                e?.config?.url ||
-                e?.request?.path ||
-                e?.request?.url ||
-                null
-
-            const method =
-                e?.config?.method?.toUpperCase() ||
-                e?.request?.method ||
-                null
-
-            let domain = null
-            try {
-                if (url) {
-                    const u = new URL(url)
-                    domain = u.hostname
-                }
-            } catch {}
-
-            let flags = []
-            if (status === 401 || /unauthorized|invalid api key/i.test(message)) flags.push('API_KEY')
-            if (status === 403) flags.push('FORBIDDEN')
-            if (status === 404) flags.push('NOT_FOUND')
-            if (status === 429) flags.push('RATE_LIMIT')
-            if (status >= 500) flags.push('SERVER_ERROR')
-            if (/timeout/i.test(message)) flags.push('TIMEOUT')
-            if (/ENOTFOUND|ECONNREFUSED|EAI_AGAIN/i.test(message)) flags.push('NETWORK')
-            if (/MODULE_NOT_FOUND|ERR_MODULE_NOT_FOUND/i.test(message)) flags.push('MODULE')
-            if (/permission|denied/i.test(message)) flags.push('PERMISSION')
-            if (typeof message === 'string') {
-                if (message.includes('<html') || message.includes('<!DOCTYPE html')) flags.push('HTML')
-                if (/Unexpected token|JSON/i.test(message)) flags.push('BAD_JSON')
-            }
-
-            let extra = ''
-
-            if (status) extra += `🌐 HTTP: ${status} ${statusText}\n`
-            if (method || url) extra += `📡 Request: ${method || 'GET'} ${url || 'desconocido'}\n`
-            if (domain) extra += `🌍 API: ${domain}\n`
-
-            if (headers) {
-                try {
-                    extra += `📨 Headers:\n${JSON.stringify(headers).slice(0,200)}\n`
-                } catch {}
-            }
-
-            if (data) {
-                try {
-                    extra += `📦 Response:\n${JSON.stringify(data).slice(0,400)}\n`
-                } catch {}
             }
 
             let debug = `
 ❌ *ERROR EN COMANDO*
 
 📌 Comando: ${prefix + commandName}
-📂 Plugin: ${file ? file.split('/').pop() : (cmd?.name || 'desconocido')}
-
-📛 Nombre: ${name}
 
 🧾 Mensaje:
 ${message.slice(0,500)}
 
-${extra.trim()}
-
-🏷️ Flags: ${flags.join(', ') || 'NINGUNO'}
-
 📍 Archivo: ${file || 'desconocido'}
-📍 Línea: ${line || '?'} | Columna: ${column || '?'}
-
-📍 Stack:
-${stack}
+📍 Línea: ${line || '?'}
 `.trim()
 
             console.log(chalk.red(debug))
@@ -443,8 +365,6 @@ ${stack}
         }
 
     } catch (e) {
-        console.log(chalk.red('[ERROR HANDLER GLOBAL]'), e)
-
         let msg = e?.message || String(e)
 
         if (m?.reply) {
