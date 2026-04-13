@@ -10,13 +10,11 @@ const handler = async (m, { conn, args, usedPrefix, command }) => {
     await m.react('🍬')
 
     try {
-        let media = await q.download()
-        if (!media) throw new Error('No media')
-
+        let { data } = await conn.getFile(await q.download())
         let packname = global.packname || '💗 𝒁𝒆𝒓𝒐 𝑻𝒘𝒐 💗'
         let author = global.author || '© Zore Two'
 
-        await conn.sendImageAsSticker(m.chat, media, m, { 
+        await conn.sendImageAsSticker(m.chat, data, m, { 
             packname: packname, 
             author: author 
         })
@@ -26,7 +24,7 @@ const handler = async (m, { conn, args, usedPrefix, command }) => {
     } catch (e) {
         console.error(e)
         await m.react('💔')
-        m.reply('💔 Darling, no pude procesar el sticker. Asegúrate de tener las librerías de stickers instaladas.')
+        m.reply('💔 Darling, no pude enviarte el sticker. Intenta de nuevo.')
     }
 }
 
