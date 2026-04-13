@@ -1,7 +1,7 @@
 import fetch from 'node-fetch'
 import yts from 'yt-search'
 
-const API_KEY = 'causa-ec43262f206b3305'
+const API_KEY = 'Zyzz-1234'
 
 const handler = async (msg, { conn, args, usedPrefix, command }) => {
     const query = args.join(' ').trim()
