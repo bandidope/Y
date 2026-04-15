@@ -4,104 +4,71 @@ function isTikTok(url = '') {
   return /tiktok\.com/i.test(url)
 }
 
-const agents = [
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-  "Mozilla/5.0 (Linux; Android 10)",
-  "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)"
-]
-
-function getHeaders() {
-  return {
-    "User-Agent": agents[Math.floor(Math.random() * agents.length)],
-    "Accept": "text/html",
-    "Accept-Language": "es-ES,es;q=0.9,en;q=0.8"
-  }
+function getID(url = '') {
+  const match = url.match(/video\/(\d+)/)
+  return match ? match[1] : null
 }
 
-async function fetchHTML(url) {
-  const res = await fetch(url, {
-    headers: getHeaders(),
-    redirect: 'follow'
+async function resolveURL(url) {
+  const res = await fetch(url, { redirect: 'follow' })
+  return res.url
+}
+
+async function fetchAPI(id) {
+  const api = `https://api16-normal-c-useast1a.tiktokv.com/aweme/v1/feed/?aweme_id=${id}`
+
+  const res = await fetch(api, {
+    headers: {
+      "User-Agent": "com.ss.android.ugc.trill/494+",
+      "Accept": "application/json"
+    }
   })
 
   return {
     status: res.status,
-    ok: res.ok,
-    finalUrl: res.url,
-    html: await res.text()
-  }
-}
-
-function extractUniversal(html = '') {
-  let results = []
-  let debug = {
-    found: false,
-    videos: 0
-  }
-
-  const match = html.match(/<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application\/json">(.*?)<\/script>/)
-
-  if (match) {
-    debug.found = true
-
-    try {
-      const json = JSON.parse(match[1])
-      const item = json?.__DEFAULT_SCOPE__?.["webapp.video-detail"]?.itemInfo?.itemStruct
-
-      if (item?.video?.playAddr) {
-        results.push(item.video.playAddr)
-        debug.videos++
-      }
-
-      if (item?.video?.downloadAddr) {
-        results.push(item.video.downloadAddr)
-        debug.videos++
-      }
-
-    } catch (e) {
-      debug.parseError = true
-    }
-  }
-
-  return {
-    urls: [...new Set(results)],
-    debug
+    json: await res.json()
   }
 }
 
 let handler = async (m, { conn, args }) => {
-  const url = args[0]
+  const input = args[0]
 
-  if (!url) return m.reply('⚠️ Ingresa un link de TikTok')
-  if (!isTikTok(url)) return m.reply('❌ Link inválido')
+  if (!input) return m.reply('⚠️ Ingresa un link de TikTok')
+  if (!isTikTok(input)) return m.reply('❌ Link inválido')
 
   try {
     await conn.sendMessage(m.chat, {
       react: { text: '🕒', key: m.key }
     })
 
-    await m.reply('📡 DEBUG\nURL:\n' + url)
+    await m.reply('📡 DEBUG\nResolviendo URL...')
 
-    const page = await fetchHTML(url)
+    const finalUrl = await resolveURL(input)
 
-    await m.reply(`📡 DEBUG\nFinal URL:\n${page.finalUrl}`)
-    await m.reply(`📡 DEBUG\nStatus: ${page.status}`)
-    await m.reply(`📡 DEBUG\nHTML length: ${page.html.length}`)
+    await m.reply('📡 DEBUG\nFinal URL:\n' + finalUrl)
 
-    const { urls, debug } = extractUniversal(page.html)
+    const id = getID(finalUrl)
 
-    await m.reply(
-      `📡 DEBUG\nUNIVERSAL_DATA: ${debug.found}\nVideos: ${debug.videos}`
-    )
+    if (!id) throw new Error('NO_ID')
 
-    if (!urls.length) {
-      throw new Error('NO_VIDEO_FOUND')
-    }
+    await m.reply('📡 DEBUG\nVideo ID:\n' + id)
 
-    await m.reply(`📡 DEBUG\nVideo final:\n${urls[0]}`)
+    const api = await fetchAPI(id)
+
+    await m.reply(`📡 DEBUG\nAPI Status: ${api.status}`)
+
+    const item = api.json?.aweme_list?.[0]
+
+    const video =
+      item?.video?.play_addr?.url_list?.[0] ||
+      item?.video?.download_addr?.url_list?.[0]
+
+    if (!video) throw new Error('NO_VIDEO')
+
+    await m.reply('📡 DEBUG\nVideo final:\n' + video)
 
     await conn.sendMessage(m.chat, {
-      video: { url: urls[0] },
+      video: { url: video },
       caption: '✅ Video de TikTok descargado'
     }, { quoted: m })
 
@@ -114,9 +81,10 @@ let handler = async (m, { conn, args }) => {
 
     let msg = '❌ Error\n\n'
 
-    if (e.message === 'NO_VIDEO_FOUND') {
-      msg += '❌ TikTok bloqueó el scraping\n'
-      msg += '💡 Requiere método avanzado (API interna)'
+    if (e.message === 'NO_ID') {
+      msg += '❌ No se pudo obtener el ID del video'
+    } else if (e.message === 'NO_VIDEO') {
+      msg += '❌ TikTok bloqueó completamente el video'
     } else {
       msg += '⚠️ Error inesperado\n' + e.message
     }
