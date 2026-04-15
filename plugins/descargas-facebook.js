@@ -18,8 +18,12 @@ async function fetchHTML(url) {
       "Pragma": "no-cache"
     }
   })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return await res.text()
+
+  return {
+    status: res.status,
+    ok: res.ok,
+    html: await res.text()
+  }
 }
 
 function extractAll(html) {
@@ -27,17 +31,21 @@ function extractAll(html) {
 
   let hd = html.match(/"playable_url_quality_hd":"([^"]+)"/g)
   let sd = html.match(/"playable_url":"([^"]+)"/g)
-
-  if (hd) hd.forEach(x => results.push(clean(x.split('"')[3])))
-  if (sd) sd.forEach(x => results.push(clean(x.split('"')[3])))
-
   let browser = html.match(/"browser_native_hd_url":"([^"]+)"/g)
-  if (browser) browser.forEach(x => results.push(clean(x.split('"')[3])))
-
   let fallback = html.match(/https:\/\/video\.[^"]+\.fbcdn\.net[^"]+/g)
-  if (fallback) fallback.forEach(x => results.push(clean(x)))
 
-  return [...new Set(results)]
+  return {
+    hd: hd || [],
+    sd: sd || [],
+    browser: browser || [],
+    fallback: fallback || [],
+    all: [
+      ...(hd || []).map(x => clean(x.split('"')[3])),
+      ...(sd || []).map(x => clean(x.split('"')[3])),
+      ...(browser || []).map(x => clean(x.split('"')[3])),
+      ...(fallback || []).map(x => clean(x))
+    ]
+  }
 }
 
 let handler = async (m, { conn, args }) => {
@@ -51,10 +59,34 @@ let handler = async (m, { conn, args }) => {
       react: { text: '🕒', key: m.key }
     })
 
-    const html = await fetchHTML(url)
-    const videos = extractAll(html)
+    await m.reply('📡 DEBUG\nURL:\n' + url)
+
+    const { status, ok, html } = await fetchHTML(url)
+
+    await m.reply(`📡 DEBUG\nHTTP Status: ${status}\nOK: ${ok}`)
+
+    await m.reply(`📡 DEBUG\nHTML length: ${html.length}`)
+
+    const blocked = /login|checkpoint|error|unsupported browser/i.test(html)
+    await m.reply(`📡 DEBUG\nBlocked detect: ${blocked}`)
+
+    const data = extractAll(html)
+
+    await m.reply(
+      `📡 DEBUG\n` +
+      `HD: ${data.hd.length}\n` +
+      `SD: ${data.sd.length}\n` +
+      `Browser: ${data.browser.length}\n` +
+      `Fallback: ${data.fallback.length}`
+    )
+
+    let videos = [...new Set(data.all)]
+
+    await m.reply(`📡 DEBUG\nVideos encontrados: ${videos.length}`)
 
     if (videos.length > 0) {
+      await m.reply(`📡 DEBUG\nPrimer video:\n${videos[0]}`)
+
       await conn.sendMessage(m.chat, {
         video: { url: videos[0] },
         caption: '✅ Video descargado'
@@ -69,8 +101,12 @@ let handler = async (m, { conn, args }) => {
 
     let direct = html.match(/https:\/\/video\.[^"]+\.fbcdn\.net[^"]+/)
 
+    await m.reply(`📡 DEBUG\nDirect fallback: ${direct ? 'SI' : 'NO'}`)
+
     if (direct) {
       let vid = clean(direct[0])
+
+      await m.reply(`📡 DEBUG\nDirect URL:\n${vid}`)
 
       await conn.sendMessage(m.chat, {
         video: { url: vid },
@@ -87,6 +123,8 @@ let handler = async (m, { conn, args }) => {
     throw new Error('NO_VIDEO_FOUND')
 
   } catch (e) {
+    await m.reply(`📡 DEBUG ERROR\n${e.stack || e.message}`)
+
     let msg = '❌ Error\n\n'
 
     if (e.message.includes('HTTP')) {
