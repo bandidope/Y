@@ -25,12 +25,16 @@ function getHeaders() {
 
 async function fetchHTML(url) {
   const headers = getHeaders()
-  const res = await fetch(url, { headers })
+  const res = await fetch(url, {
+    headers,
+    redirect: 'follow'
+  })
 
   return {
     status: res.status,
     ok: res.ok,
     headers,
+    finalUrl: res.url,
     html: await res.text()
   }
 }
@@ -96,6 +100,7 @@ let handler = async (m, { conn, args }) => {
 
     await m.reply(`📡 DEBUG\nStatus: ${page.status}\nOK: ${page.ok}`)
     await m.reply(`📡 DEBUG\nUser-Agent:\n${page.headers['User-Agent']}`)
+    await m.reply(`📡 DEBUG\nFinal URL:\n${page.finalUrl}`)
     await m.reply(`📡 DEBUG\nHTML length: ${page.html.length}`)
 
     let { urls, debug } = extractTikTok(page.html)
@@ -107,9 +112,10 @@ let handler = async (m, { conn, args }) => {
     if (!urls.length) {
       await m.reply('📡 DEBUG\nIntentando versión móvil...')
 
-      const mobileUrl = toMobile(url)
+      const mobileUrl = toMobile(page.finalUrl)
       const page2 = await fetchHTML(mobileUrl)
 
+      await m.reply(`📡 DEBUG\nMobile URL:\n${mobileUrl}`)
       await m.reply(`📡 DEBUG\nMobile Status: ${page2.status}`)
       await m.reply(`📡 DEBUG\nMobile HTML length: ${page2.html.length}`)
 
