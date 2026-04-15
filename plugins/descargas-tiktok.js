@@ -17,17 +17,45 @@ async function resolveURL(url) {
 async function fetchAPI(id) {
   const api = `https://api16-normal-c-useast1a.tiktokv.com/aweme/v1/feed/?aweme_id=${id}`
 
-  const res = await fetch(api, {
-    headers: {
-      "User-Agent": "com.ss.android.ugc.trill/494+",
-      "Accept": "application/json"
-    }
-  })
+  try {
+    const res = await fetch(api, {
+      headers: {
+        "User-Agent": "com.ss.android.ugc.trill/494+",
+        "Accept": "application/json"
+      }
+    })
 
-  return {
-    status: res.status,
-    json: await res.json()
+    const text = await res.text()
+
+    if (!text.startsWith('{')) throw new Error('INVALID_JSON')
+
+    const json = JSON.parse(text)
+
+    const item = json?.aweme_list?.[0]
+
+    return (
+      item?.video?.play_addr?.url_list?.[0] ||
+      item?.video?.download_addr?.url_list?.[0]
+    )
+
+  } catch {
+    return null
   }
+}
+
+async function fetchOembed(url) {
+  const api = `https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`
+
+  const res = await fetch(api)
+  if (!res.ok) return null
+
+  const json = await res.json()
+
+  const html = json?.html || ''
+
+  const match = html.match(/src="([^"]+)"/)
+
+  return match ? match[1] : null
 }
 
 let handler = async (m, { conn, args }) => {
@@ -49,19 +77,19 @@ let handler = async (m, { conn, args }) => {
 
     const id = getID(finalUrl)
 
-    if (!id) throw new Error('NO_ID')
-
     await m.reply('📡 DEBUG\nVideo ID:\n' + id)
 
-    const api = await fetchAPI(id)
+    let video = await fetchAPI(id)
 
-    await m.reply(`📡 DEBUG\nAPI Status: ${api.status}`)
+    await m.reply('📡 DEBUG\nAPI interna:\n' + (video ? 'OK' : 'FALLÓ'))
 
-    const item = api.json?.aweme_list?.[0]
+    if (!video) {
+      await m.reply('📡 DEBUG\nIntentando oEmbed...')
 
-    const video =
-      item?.video?.play_addr?.url_list?.[0] ||
-      item?.video?.download_addr?.url_list?.[0]
+      video = await fetchOembed(finalUrl)
+
+      await m.reply('📡 DEBUG\noEmbed:\n' + (video ? 'OK' : 'FALLÓ'))
+    }
 
     if (!video) throw new Error('NO_VIDEO')
 
@@ -81,10 +109,9 @@ let handler = async (m, { conn, args }) => {
 
     let msg = '❌ Error\n\n'
 
-    if (e.message === 'NO_ID') {
-      msg += '❌ No se pudo obtener el ID del video'
-    } else if (e.message === 'NO_VIDEO') {
-      msg += '❌ TikTok bloqueó completamente el video'
+    if (e.message === 'NO_VIDEO') {
+      msg += '❌ No se pudo obtener el video\n'
+      msg += '💡 TikTok bloqueó todos los métodos'
     } else {
       msg += '⚠️ Error inesperado\n' + e.message
     }
