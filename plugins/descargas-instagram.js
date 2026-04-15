@@ -54,15 +54,38 @@ function extractHTML(html = '') {
   return [...new Set(results)]
 }
 
+function extractAdvanced(html = '') {
+  let results = []
+
+  let video = html.match(/"video_versions":\[(.*?)\]/)
+  if (video) {
+    let urls = video[1].match(/"url":"([^"]+)"/g)
+    if (urls) urls.forEach(u => results.push(clean(u.split('"')[3])))
+  }
+
+  let display = html.match(/"display_resources":\[(.*?)\]/)
+  if (display) {
+    let urls = display[1].match(/"src":"([^"]+)"/g)
+    if (urls) urls.forEach(u => results.push(clean(u.split('"')[3])))
+  }
+
+  let dash = html.match(/"dash_manifest":"([^"]+)"/)
+  if (dash) {
+    let decoded = clean(dash[1])
+    let videoUrl = decoded.match(/https:\/\/[^"]+\.mp4[^"]+/)
+    if (videoUrl) results.push(videoUrl[0])
+  }
+
+  return [...new Set(results)]
+}
+
 function extractJSON(json = {}) {
   let results = []
 
   try {
     const media = json?.graphql?.shortcode_media
 
-    if (media?.video_url) {
-      results.push(media.video_url)
-    }
+    if (media?.video_url) results.push(media.video_url)
 
     if (media?.edge_sidecar_to_children?.edges) {
       media.edge_sidecar_to_children.edges.forEach(e => {
@@ -94,7 +117,10 @@ let handler = async (m, { conn, args }) => {
     await m.reply(`📡 DEBUG\nUser-Agent:\n${page.headers['User-Agent']}`)
     await m.reply(`📡 DEBUG\nHTML length: ${page.html.length}`)
 
-    let videos = extractHTML(page.html)
+    let videos = [
+      ...extractHTML(page.html),
+      ...extractAdvanced(page.html)
+    ]
 
     await m.reply(`📡 DEBUG\nHTML videos: ${videos.length}`)
 
@@ -114,7 +140,7 @@ let handler = async (m, { conn, args }) => {
         await m.reply(`📡 DEBUG\nJSON videos: ${jsonVideos.length}`)
 
         videos = jsonVideos
-      } catch (err) {
+      } catch {
         await m.reply('📡 DEBUG\nJSON parse error')
       }
     }
