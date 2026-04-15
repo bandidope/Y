@@ -17,39 +17,60 @@ const agents = [
 ]
 
 function getHeaders() {
+  const agent = agents[Math.floor(Math.random() * agents.length)]
+  const lang = ["es-ES,es;q=0.9", "en-US,en;q=0.9"][Math.floor(Math.random() * 2)]
+
   return {
-    "User-Agent": agents[Math.floor(Math.random() * agents.length)],
-    "Accept": "text/html",
-    "Accept-Language": "es-ES,es;q=0.9,en;q=0.8"
+    "User-Agent": agent,
+    "Accept": "text/html,application/json",
+    "Accept-Language": lang
   }
 }
 
 async function fetchHTML(url) {
-  const res = await fetch(url, {
-    headers: getHeaders()
-  })
+  const headers = getHeaders()
+  const res = await fetch(url, { headers })
 
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-
-  return await res.text()
+  return {
+    status: res.status,
+    ok: res.ok,
+    headers,
+    html: await res.text()
+  }
 }
 
-function extractVideo(html = '') {
+function extractHTML(html = '') {
   let results = []
 
   let jsonVideo = html.match(/"video_url":"([^"]+)"/g)
-  if (jsonVideo) {
-    jsonVideo.forEach(v => {
-      let url = clean(v.split('"')[3])
-      results.push(url)
-    })
-  }
+  if (jsonVideo) jsonVideo.forEach(v => results.push(clean(v.split('"')[3])))
 
   let og = html.match(/property="og:video" content="([^"]+)"/)
   if (og) results.push(clean(og[1]))
 
   let fallback = html.match(/https:\/\/video\.[^"]+\.cdninstagram\.com[^"]+/)
   if (fallback) results.push(clean(fallback[0]))
+
+  return [...new Set(results)]
+}
+
+function extractJSON(json = {}) {
+  let results = []
+
+  try {
+    const media = json?.graphql?.shortcode_media
+
+    if (media?.video_url) {
+      results.push(media.video_url)
+    }
+
+    if (media?.edge_sidecar_to_children?.edges) {
+      media.edge_sidecar_to_children.edges.forEach(e => {
+        if (e.node?.video_url) results.push(e.node.video_url)
+      })
+    }
+
+  } catch {}
 
   return [...new Set(results)]
 }
@@ -65,17 +86,47 @@ let handler = async (m, { conn, args }) => {
       react: { text: '🕒', key: m.key }
     })
 
-    const html = await fetchHTML(url)
-    const videos = extractVideo(html)
+    await m.reply('📡 DEBUG\nURL:\n' + url)
+
+    const page = await fetchHTML(url)
+
+    await m.reply(`📡 DEBUG\nStatus: ${page.status}\nOK: ${page.ok}`)
+    await m.reply(`📡 DEBUG\nUser-Agent:\n${page.headers['User-Agent']}`)
+    await m.reply(`📡 DEBUG\nHTML length: ${page.html.length}`)
+
+    let videos = extractHTML(page.html)
+
+    await m.reply(`📡 DEBUG\nHTML videos: ${videos.length}`)
+
+    if (!videos.length) {
+      const apiUrl = url.includes('?') ? url + '&__a=1&__d=dis' : url + '?__a=1&__d=dis'
+
+      await m.reply('📡 DEBUG\nIntentando JSON endpoint...')
+
+      const api = await fetchHTML(apiUrl)
+
+      await m.reply(`📡 DEBUG\nJSON Status: ${api.status}`)
+
+      try {
+        const json = JSON.parse(api.html)
+        const jsonVideos = extractJSON(json)
+
+        await m.reply(`📡 DEBUG\nJSON videos: ${jsonVideos.length}`)
+
+        videos = jsonVideos
+      } catch (err) {
+        await m.reply('📡 DEBUG\nJSON parse error')
+      }
+    }
 
     if (!videos.length) {
       throw new Error('NO_VIDEO_FOUND')
     }
 
-    const video = videos[0]
+    await m.reply(`📡 DEBUG\nVideo final:\n${videos[0]}`)
 
     await conn.sendMessage(m.chat, {
-      video: { url: video },
+      video: { url: videos[0] },
       caption: '✅ Video de Instagram descargado'
     }, { quoted: m })
 
@@ -84,6 +135,8 @@ let handler = async (m, { conn, args }) => {
     })
 
   } catch (e) {
+    await m.reply(`📡 DEBUG ERROR\n${e.stack || e.message}`)
+
     let msg = '❌ Error\n\n'
 
     if (e.message.includes('HTTP')) {
