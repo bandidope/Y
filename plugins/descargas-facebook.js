@@ -4,40 +4,72 @@ function isFacebook(url = '') {
   return /facebook\.com|fb\.watch/i.test(url)
 }
 
-function clean(str) {
-  return str?.replace(/\\u0025/g, '%').replace(/\\\//g, '/')
+function clean(str = '') {
+  return str
+    .replace(/\\u0025/g, '%')
+    .replace(/\\\//g, '/')
+    .replace(/&amp;/g, '&')
+    .replace(/\\u003C/g, '<')
+    .replace(/\\u003E/g, '>')
 }
 
 async function fetchHTML(url) {
-  const res = await fetch(url, {
-    headers: {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-      "Accept": "text/html,application/xhtml+xml",
-      "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
-      "Cache-Control": "no-cache",
-      "Pragma": "no-cache"
-    }
-  })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return await res.text()
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 15000)
+
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache"
+      }
+    })
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+    return await res.text()
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
-function extractAll(html) {
-  let results = []
+function extractAll(html = '') {
+  const results = new Set()
 
-  let hd = html.match(/"playable_url_quality_hd":"([^"]+)"/g)
-  let sd = html.match(/"playable_url":"([^"]+)"/g)
+  const patterns = [
+    /"playable_url_quality_hd":"([^"]+)"/g,
+    /"playable_url":"([^"]+)"/g,
+    /"browser_native_hd_url":"([^"]+)"/g,
+    /https:\/\/video\.[^"]+\.fbcdn\.net[^"]+/g
+  ]
 
-  if (hd) hd.forEach(x => results.push(clean(x.split('"')[3])))
-  if (sd) sd.forEach(x => results.push(clean(x.split('"')[3])))
+  for (const pattern of patterns) {
+    let match
+    while ((match = pattern.exec(html)) !== null) {
+      results.add(clean(match[1] || match[0]))
+    }
+  }
 
-  let browser = html.match(/"browser_native_hd_url":"([^"]+)"/g)
-  if (browser) browser.forEach(x => results.push(clean(x.split('"')[3])))
+  return Array.from(results)
+}
 
-  let fallback = html.match(/https:\/\/video\.[^"]+\.fbcdn\.net[^"]+/g)
-  if (fallback) fallback.forEach(x => results.push(clean(x)))
+function sortVideos(videos = []) {
+  return videos.sort((a, b) => {
+    const score = v => {
+      if (/hd/i.test(v)) return 3
+      if (/sd/i.test(v)) return 2
+      return 1
+    }
+    return score(b) - score(a)
+  })
+}
 
-  return [...new Set(results)]
+function isBlocked(html = '') {
+  return /login|checkpoint|error|unsupported browser/i.test(html)
 }
 
 let handler = async (m, { conn, args }) => {
@@ -52,48 +84,42 @@ let handler = async (m, { conn, args }) => {
     })
 
     const html = await fetchHTML(url)
+
+    if (isBlocked(html)) {
+      throw new Error('BLOCKED')
+    }
+
     const videos = extractAll(html)
 
-    if (videos.length > 0) {
-      await conn.sendMessage(m.chat, {
-        video: { url: videos[0] },
-        caption: '✅ Video descargado'
-      }, { quoted: m })
-
-      await conn.sendMessage(m.chat, {
-        react: { text: '✅', key: m.key }
-      })
-
-      return
+    if (!videos.length) {
+      throw new Error('NO_VIDEO_FOUND')
     }
 
-    let direct = html.match(/https:\/\/video\.[^"]+\.fbcdn\.net[^"]+/)
+    const sorted = sortVideos(videos)
+    const video = sorted[0]
 
-    if (direct) {
-      let vid = clean(direct[0])
+    await conn.sendMessage(m.chat, {
+      video: { url: video },
+      caption: '✅ Video descargado'
+    }, { quoted: m })
 
-      await conn.sendMessage(m.chat, {
-        video: { url: vid },
-        caption: '✅ Video descargado'
-      }, { quoted: m })
-
-      await conn.sendMessage(m.chat, {
-        react: { text: '✅', key: m.key }
-      })
-
-      return
-    }
-
-    throw new Error('NO_VIDEO_FOUND')
+    await conn.sendMessage(m.chat, {
+      react: { text: '✅', key: m.key }
+    })
 
   } catch (e) {
     let msg = '❌ Error\n\n'
 
-    if (e.message.includes('HTTP')) {
+    if (e.name === 'AbortError') {
+      msg += '⏱️ Tiempo de espera agotado (timeout)'
+    } else if (e.message.includes('HTTP')) {
       msg += '🌐 Error de conexión\n' + e.message
-    } else if (e.message === 'NO_VIDEO_FOUND') {
+    } else if (e.message === 'BLOCKED') {
       msg += '🚫 Facebook bloqueó el scraping\n'
-      msg += '💡 Probablemente es reel o requiere login'
+      msg += '💡 Requiere login o es contenido restringido'
+    } else if (e.message === 'NO_VIDEO_FOUND') {
+      msg += '❌ No se encontró el video\n'
+      msg += '💡 Puede ser reel o formato no soportado'
     } else {
       msg += '⚠️ Error inesperado\n' + e.message
     }
