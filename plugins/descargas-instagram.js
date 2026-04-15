@@ -38,7 +38,6 @@ async function fetchHTML(url) {
 
 function extractMedia(html = '') {
   let videos = []
-  let images = []
 
   let jsonVideo = html.match(/"video_url":"([^"]+)"/g)
   if (jsonVideo) jsonVideo.forEach(v => videos.push(clean(v.split('"')[3])))
@@ -62,18 +61,8 @@ function extractMedia(html = '') {
     if (videoUrl) videos.push(videoUrl[0])
   }
 
-  let display = html.match(/"display_resources":\[(.*?)\]/)
-  if (display) {
-    let urls = display[1].match(/"src":"([^"]+)"/g)
-    if (urls) urls.forEach(u => images.push(clean(u.split('"')[3])))
-  }
-
-  let ogImage = html.match(/property="og:image" content="([^"]+)"/)
-  if (ogImage) images.push(clean(ogImage[1]))
-
   return {
-    videos: [...new Set(videos)].filter(v => /^https?:\/\//.test(v)),
-    images: [...new Set(images)].filter(v => /^https?:\/\//.test(v))
+    videos: [...new Set(videos)].filter(v => /^https?:\/\//.test(v))
   }
 }
 
@@ -89,20 +78,15 @@ let handler = async (m, { conn, args }) => {
     })
 
     const html = await fetchHTML(url)
-    const { videos, images } = extractMedia(html)
+    const { videos } = extractMedia(html)
 
     if (videos.length) {
       await conn.sendMessage(m.chat, {
         video: { url: videos[0] },
         caption: '✅ Video de Instagram descargado'
       }, { quoted: m })
-    } else if (images.length) {
-      await conn.sendMessage(m.chat, {
-        image: { url: images[0] },
-        caption: '✅ Imagen de Instagram descargada'
-      }, { quoted: m })
     } else {
-      throw new Error('NO_MEDIA_FOUND')
+      throw new Error('NO_VIDEO_FOUND')
     }
 
     await conn.sendMessage(m.chat, {
@@ -112,10 +96,10 @@ let handler = async (m, { conn, args }) => {
   } catch (e) {
     let msg = '❌ Error\n\n'
 
-    if (e.message.includes('HTTP') || e.message.includes('IMG_HTTP')) {
+    if (e.message.includes('HTTP')) {
       msg += '🌐 Error de conexión\n' + e.message
-    } else if (e.message === 'NO_MEDIA_FOUND') {
-      msg += '❌ No se encontró contenido\n'
+    } else if (e.message === 'NO_VIDEO_FOUND') {
+      msg += '❌ No se encontró video\n'
       msg += '💡 Puede ser privado o requerir login'
     } else {
       msg += '⚠️ Error inesperado\n' + e.message
