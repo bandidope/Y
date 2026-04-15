@@ -11,15 +11,38 @@ function clean(str = '') {
     .replace(/&amp;/g, '&')
 }
 
+function toMobile(url = '') {
+  return url
+    .replace('www.facebook.com', 'm.facebook.com')
+    .replace('facebook.com', 'm.facebook.com')
+}
+
+function toBasic(url = '') {
+  return url
+    .replace('www.facebook.com', 'mbasic.facebook.com')
+    .replace('m.facebook.com', 'mbasic.facebook.com')
+    .replace('facebook.com', 'mbasic.facebook.com')
+}
+
+const agents = [
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+  "Mozilla/5.0 (Linux; Android 10)",
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)"
+]
+
+function getHeaders() {
+  return {
+    "User-Agent": agents[Math.floor(Math.random() * agents.length)],
+    "Accept": "text/html,application/xhtml+xml",
+    "Accept-Language": ["es-ES,es;q=0.9", "en-US,en;q=0.9"][Math.floor(Math.random() * 2)],
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache"
+  }
+}
+
 async function fetchHTML(url) {
   const res = await fetch(url, {
-    headers: {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-      "Accept": "text/html,application/xhtml+xml",
-      "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
-      "Cache-Control": "no-cache",
-      "Pragma": "no-cache"
-    }
+    headers: getHeaders()
   })
 
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -57,6 +80,36 @@ function extractAll(html = '') {
   ].filter(v => /^https?:\/\//.test(v))
 }
 
+function extractMobile(html = '') {
+  const results = []
+
+  const videoTag = html.match(/<video[^>]+src="([^"]+)"/)
+  if (videoTag) results.push(clean(videoTag[1]))
+
+  const sd = html.match(/"sd_src":"([^"]+)"/)
+  if (sd) results.push(clean(sd[1]))
+
+  const hd = html.match(/"hd_src":"([^"]+)"/)
+  if (hd) results.push(clean(hd[1]))
+
+  const fallback = html.match(/https:\/\/video\.[^"]+\.fbcdn\.net[^"]+/)
+  if (fallback) results.push(clean(fallback[0]))
+
+  return [...new Set(results)]
+}
+
+function extractBasic(html = '') {
+  const results = []
+
+  const redirect = html.match(/\/video_redirect\/\?src=([^"&]+)/)
+  if (redirect) results.push(clean(decodeURIComponent(redirect[1])))
+
+  const fallback = html.match(/https:\/\/video\.[^"]+\.fbcdn\.net[^"]+/)
+  if (fallback) results.push(clean(fallback[0]))
+
+  return [...new Set(results)]
+}
+
 let handler = async (m, { conn, args }) => {
   const url = args[0]
 
@@ -68,8 +121,20 @@ let handler = async (m, { conn, args }) => {
       react: { text: '🕒', key: m.key }
     })
 
-    const html = await fetchHTML(url)
-    const videos = [...new Set(extractAll(html))]
+    let html = await fetchHTML(url)
+    let videos = [...new Set(extractAll(html))]
+
+    if (!videos.length) {
+      const mobileUrl = toMobile(url)
+      html = await fetchHTML(mobileUrl)
+      videos = extractMobile(html)
+    }
+
+    if (!videos.length) {
+      const basicUrl = toBasic(url)
+      html = await fetchHTML(basicUrl)
+      videos = extractBasic(html)
+    }
 
     if (!videos.length) {
       throw new Error('NO_VIDEO_FOUND')
