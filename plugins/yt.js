@@ -12,30 +12,28 @@ function getID(url = '') {
   return match ? match[1] : null
 }
 
-async function fetchHTML(url) {
-  const res = await fetch(url, {
+async function fetchPlayer(id) {
+  const res = await fetch('https://www.youtube.com/youtubei/v1/player', {
+    method: 'POST',
     headers: {
+      "Content-Type": "application/json",
       "User-Agent": "Mozilla/5.0",
       "Accept-Language": "es-ES,es;q=0.9"
-    }
+    },
+    body: JSON.stringify({
+      context: {
+        client: {
+          clientName: "ANDROID",
+          clientVersion: "19.09.37"
+        }
+      },
+      videoId: id
+    })
   })
 
   return {
     status: res.status,
-    ok: res.ok,
-    html: await res.text()
-  }
-}
-
-function extractJSON(html = '') {
-  const match = html.match(/ytInitialPlayerResponse\s*=\s*(\{.+?\});/)
-
-  if (!match) return null
-
-  try {
-    return JSON.parse(match[1])
-  } catch {
-    return null
+    json: await res.json()
   }
 }
 
@@ -83,20 +81,11 @@ let handler = async (m, { conn, args }) => {
 
     if (!id) throw new Error('NO_ID')
 
-    const watch = `https://www.youtube.com/watch?v=${id}`
+    const api = await fetchPlayer(id)
 
-    const page = await fetchHTML(watch)
+    await m.reply(`📡 DEBUG\nAPI Status: ${api.status}`)
 
-    await m.reply(`📡 DEBUG\nStatus: ${page.status}\nOK: ${page.ok}`)
-    await m.reply(`📡 DEBUG\nHTML length: ${page.html.length}`)
-
-    const json = extractJSON(page.html)
-
-    await m.reply('📡 DEBUG\nJSON encontrado:\n' + !!json)
-
-    if (!json) throw new Error('NO_JSON')
-
-    const data = analyzeFormats(json)
+    const data = analyzeFormats(api.json)
 
     await m.reply(
       `📡 DEBUG\nFormats: ${data.totalFormats}\nAdaptive: ${data.totalAdaptive}`
@@ -107,16 +96,15 @@ let handler = async (m, { conn, args }) => {
     )
 
     if (data.direct.length > 0) {
-      await m.reply('📡 DEBUG\nVideo directo encontrado:\n' + data.direct[0])
+      await m.reply('📡 DEBUG\nVideo directo:\n' + data.direct[0])
 
       await conn.sendMessage(m.chat, {
         video: { url: data.direct[0] },
-        caption: '✅ Video descargado (directo)'
+        caption: '✅ Video descargado'
       }, { quoted: m })
 
     } else if (data.cipher.length > 0) {
-      await m.reply('📡 DEBUG\nSe requiere descifrado (signatureCipher)')
-
+      await m.reply('📡 DEBUG\nRequiere descifrado (signatureCipher)')
       throw new Error('CIPHER')
     } else {
       throw new Error('NO_VIDEO')
@@ -133,10 +121,8 @@ let handler = async (m, { conn, args }) => {
 
     if (e.message === 'NO_ID') {
       msg += '❌ No se pudo obtener el ID'
-    } else if (e.message === 'NO_JSON') {
-      msg += '❌ YouTube bloqueó el JSON'
     } else if (e.message === 'CIPHER') {
-      msg += '⚠️ Video protegido\n💡 Requiere descifrar firma'
+      msg += '⚠️ Video protegido\n💡 Requiere descifrado'
     } else if (e.message === 'NO_VIDEO') {
       msg += '❌ No se encontró video'
     } else {
