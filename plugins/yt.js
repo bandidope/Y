@@ -25,26 +25,27 @@ async function fetchHTML(url) {
 
 function extractAPI(html = '') {
   const key = html.match(/"INNERTUBE_API_KEY":"([^"]+)"/)?.[1]
-  const clientName = html.match(/"INNERTUBE_CLIENT_NAME":(\d+)/)?.[1]
-  const clientVersion = html.match(/"INNERTUBE_CLIENT_VERSION":"([^"]+)"/)?.[1]
-
-  return { key, clientName, clientVersion }
+  return { key }
 }
 
-async function fetchPlayer(id, config) {
-  const res = await fetch(`https://www.youtube.com/youtubei/v1/player?key=${config.key}`, {
+async function fetchPlayer(id, key) {
+  const res = await fetch(`https://www.youtube.com/youtubei/v1/player?key=${key}`, {
     method: 'POST',
     headers: {
       "Content-Type": "application/json",
-      "User-Agent": "Mozilla/5.0",
-      "X-YouTube-Client-Name": config.clientName,
-      "X-YouTube-Client-Version": config.clientVersion
+      "User-Agent": "com.google.android.youtube/19.09.37",
+      "X-YouTube-Client-Name": "3",
+      "X-YouTube-Client-Version": "19.09.37"
     },
     body: JSON.stringify({
       context: {
         client: {
-          clientName: "WEB",
-          clientVersion: config.clientVersion
+          clientName: "ANDROID",
+          clientVersion: "19.09.37",
+          androidSdkVersion: 30,
+          userAgent: "com.google.android.youtube/19.09.37 (Linux; U; Android 11)",
+          hl: "es",
+          gl: "MX"
         }
       },
       videoId: id
@@ -98,16 +99,17 @@ let handler = async (m, { conn, args }) => {
     const id = getID(url)
     await m.reply('📡 DEBUG\nVideo ID:\n' + id)
 
+    if (!id) throw new Error('NO_ID')
+
     const html = await fetchHTML(`https://www.youtube.com/watch?v=${id}`)
 
     const config = extractAPI(html)
 
     await m.reply(`📡 DEBUG\nAPI KEY: ${!!config.key}`)
-    await m.reply(`📡 DEBUG\nCLIENT: ${config.clientName} | ${config.clientVersion}`)
 
     if (!config.key) throw new Error('NO_API_KEY')
 
-    const api = await fetchPlayer(id, config)
+    const api = await fetchPlayer(id, config.key)
 
     await m.reply(`📡 DEBUG\nAPI Status: ${api.status}`)
 
@@ -145,7 +147,9 @@ let handler = async (m, { conn, args }) => {
 
     let msg = '❌ Error\n\n'
 
-    if (e.message === 'NO_API_KEY') {
+    if (e.message === 'NO_ID') {
+      msg += '❌ No se pudo obtener el ID'
+    } else if (e.message === 'NO_API_KEY') {
       msg += '❌ No se pudo obtener API KEY'
     } else if (e.message === 'CIPHER') {
       msg += '⚠️ Video protegido\n💡 Requiere descifrado'
