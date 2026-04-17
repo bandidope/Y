@@ -204,13 +204,6 @@ export const handler = async (m, conn, plugins) => {
             }, { quoted: m })
         }
 
-        const senderRawFull = m.sender || ''
-        const senderCanonical = senderRawFull.replace(/:[0-9A-Za-z]+(?=@s\.whatsapp\.net)/, '')
-        if (senderCanonical !== m.sender) {
-            m.realSender = m.sender
-            m.sender = senderCanonical
-        }
-
         const isROwner = isRootOwnerJid(m.sender)
         const isOwner = isROwner || isOwnerJid(m.sender)
         const isPremium = isOwner || isPremiumJid(m.sender)
