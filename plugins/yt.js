@@ -25,17 +25,20 @@ async function fetchHTML(url) {
 
 function extractAPI(html = '') {
   const key = html.match(/"INNERTUBE_API_KEY":"([^"]+)"/)?.[1]
-  return { key }
+  const visitor = html.match(/"VISITOR_DATA":"([^"]+)"/)?.[1]
+
+  return { key, visitor }
 }
 
-async function fetchPlayer(id, key) {
-  const res = await fetch(`https://www.youtube.com/youtubei/v1/player?key=${key}`, {
+async function fetchPlayer(id, config) {
+  const res = await fetch(`https://www.youtube.com/youtubei/v1/player?key=${config.key}`, {
     method: 'POST',
     headers: {
       "Content-Type": "application/json",
       "User-Agent": "com.google.android.youtube/19.09.37",
       "X-YouTube-Client-Name": "3",
-      "X-YouTube-Client-Version": "19.09.37"
+      "X-YouTube-Client-Version": "19.09.37",
+      "Origin": "https://www.youtube.com"
     },
     body: JSON.stringify({
       context: {
@@ -43,9 +46,20 @@ async function fetchPlayer(id, key) {
           clientName: "ANDROID",
           clientVersion: "19.09.37",
           androidSdkVersion: 30,
-          userAgent: "com.google.android.youtube/19.09.37 (Linux; U; Android 11)",
           hl: "es",
-          gl: "MX"
+          gl: "MX",
+          utcOffsetMinutes: -360
+        },
+        user: {
+          lockedSafetyMode: false
+        },
+        request: {
+          useSsl: true
+        }
+      },
+      playbackContext: {
+        contentPlaybackContext: {
+          signatureTimestamp: 19369
         }
       },
       videoId: id
@@ -106,10 +120,11 @@ let handler = async (m, { conn, args }) => {
     const config = extractAPI(html)
 
     await m.reply(`📡 DEBUG\nAPI KEY: ${!!config.key}`)
+    await m.reply(`📡 DEBUG\nVisitor: ${!!config.visitor}`)
 
     if (!config.key) throw new Error('NO_API_KEY')
 
-    const api = await fetchPlayer(id, config.key)
+    const api = await fetchPlayer(id, config)
 
     await m.reply(`📡 DEBUG\nAPI Status: ${api.status}`)
 
@@ -132,7 +147,7 @@ let handler = async (m, { conn, args }) => {
       }, { quoted: m })
 
     } else if (data.cipher.length > 0) {
-      await m.reply('📡 DEBUG\nRequiere descifrado (signatureCipher)')
+      await m.reply('📡 DEBUG\nRequiere descifrado')
       throw new Error('CIPHER')
     } else {
       throw new Error('NO_VIDEO')
@@ -147,14 +162,12 @@ let handler = async (m, { conn, args }) => {
 
     let msg = '❌ Error\n\n'
 
-    if (e.message === 'NO_ID') {
-      msg += '❌ No se pudo obtener el ID'
-    } else if (e.message === 'NO_API_KEY') {
+    if (e.message === 'NO_API_KEY') {
       msg += '❌ No se pudo obtener API KEY'
-    } else if (e.message === 'CIPHER') {
-      msg += '⚠️ Video protegido\n💡 Requiere descifrado'
     } else if (e.message === 'NO_VIDEO') {
       msg += '❌ No se encontró video'
+    } else if (e.message === 'CIPHER') {
+      msg += '⚠️ Video protegido'
     } else {
       msg += '⚠️ Error inesperado\n' + e.message
     }
