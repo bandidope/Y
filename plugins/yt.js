@@ -5,95 +5,115 @@ function isYouTube(url = '') {
 }
 
 function getID(url = '') {
-  let match = url.match(/v=([^&]+)/)
-  if (match) return match[1]
-
-  match = url.match(/youtu\.be\/([^?]+)/)
-  return match ? match[1] : null
+  let m = url.match(/v=([^&]+)/)
+  if (m) return m[1]
+  m = url.match(/youtu\.be\/([^?]+)/)
+  return m ? m[1] : null
 }
 
 async function fetchHTML(url) {
-  const res = await fetch(url, {
+  const r = await fetch(url, {
     headers: {
       "User-Agent": "Mozilla/5.0",
       "Accept-Language": "es-ES,es;q=0.9"
     }
   })
-
-  return await res.text()
+  return await r.text()
 }
 
-function extractAPI(html = '') {
+function extractConfig(html = '') {
   const key = html.match(/"INNERTUBE_API_KEY":"([^"]+)"/)?.[1]
-  const visitor = html.match(/"VISITOR_DATA":"([^"]+)"/)?.[1]
-
-  return { key, visitor }
+  const sts = html.match(/"signatureTimestamp":(\d+)/)?.[1]
+  return { key, sts }
 }
 
-async function fetchPlayer(id, config) {
-  const res = await fetch(`https://www.youtube.com/youtubei/v1/player?key=${config.key}`, {
-    method: 'POST',
-    headers: {
+async function fetchPlayer(id, key, sts, mode = 'ANDROID') {
+  let body
+  let headers
+
+  if (mode === 'ANDROID') {
+    headers = {
       "Content-Type": "application/json",
       "User-Agent": "com.google.android.youtube/19.09.37",
       "X-YouTube-Client-Name": "3",
       "X-YouTube-Client-Version": "19.09.37",
       "Origin": "https://www.youtube.com"
-    },
-    body: JSON.stringify({
+    }
+
+    body = {
       context: {
         client: {
           clientName: "ANDROID",
           clientVersion: "19.09.37",
           androidSdkVersion: 30,
           hl: "es",
-          gl: "MX",
-          utcOffsetMinutes: -360
-        },
-        user: {
-          lockedSafetyMode: false
-        },
-        request: {
-          useSsl: true
+          gl: "MX"
         }
       },
       playbackContext: {
         contentPlaybackContext: {
-          signatureTimestamp: 19369
+          signatureTimestamp: Number(sts || 0)
         }
       },
       videoId: id
-    })
+    }
+  } else {
+    headers = {
+      "Content-Type": "application/json",
+      "User-Agent": "com.google.ios.youtube/19.09.3",
+      "X-YouTube-Client-Name": "5",
+      "X-YouTube-Client-Version": "19.09.3",
+      "Origin": "https://www.youtube.com"
+    }
+
+    body = {
+      context: {
+        client: {
+          clientName: "IOS",
+          clientVersion: "19.09.3",
+          deviceModel: "iPhone14,3",
+          hl: "es",
+          gl: "MX"
+        }
+      },
+      videoId: id
+    }
+  }
+
+  const r = await fetch(`https://www.youtube.com/youtubei/v1/player?key=${key}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body)
   })
 
   return {
-    status: res.status,
-    json: await res.json()
+    status: r.status,
+    json: await r.json()
   }
 }
 
-function analyzeFormats(json = {}) {
-  const formats = json?.streamingData?.formats || []
-  const adaptive = json?.streamingData?.adaptiveFormats || []
+function analyze(json = {}) {
+  const f = json?.streamingData?.formats || []
+  const a = json?.streamingData?.adaptiveFormats || []
 
-  let direct = []
-  let cipher = []
+  const direct = []
+  const cipher = []
 
-  formats.forEach(f => {
-    if (f.url) direct.push(f.url)
-    if (f.signatureCipher) cipher.push(f.signatureCipher)
+  f.forEach(x => {
+    if (x.url) direct.push(x.url)
+    if (x.signatureCipher) cipher.push(x.signatureCipher)
   })
 
-  adaptive.forEach(f => {
-    if (f.url) direct.push(f.url)
-    if (f.signatureCipher) cipher.push(f.signatureCipher)
+  a.forEach(x => {
+    if (x.url) direct.push(x.url)
+    if (x.signatureCipher) cipher.push(x.signatureCipher)
   })
 
   return {
     direct,
     cipher,
-    totalFormats: formats.length,
-    totalAdaptive: adaptive.length
+    f: f.length,
+    a: a.length
   }
 }
 
@@ -116,38 +136,43 @@ let handler = async (m, { conn, args }) => {
     if (!id) throw new Error('NO_ID')
 
     const html = await fetchHTML(`https://www.youtube.com/watch?v=${id}`)
+    const cfg = extractConfig(html)
 
-    const config = extractAPI(html)
+    await m.reply(`📡 DEBUG\nAPI KEY: ${!!cfg.key}`)
+    await m.reply(`📡 DEBUG\nSTS: ${cfg.sts || 'null'}`)
 
-    await m.reply(`📡 DEBUG\nAPI KEY: ${!!config.key}`)
-    await m.reply(`📡 DEBUG\nVisitor: ${!!config.visitor}`)
+    if (!cfg.key) throw new Error('NO_KEY')
 
-    if (!config.key) throw new Error('NO_API_KEY')
+    let api = await fetchPlayer(id, cfg.key, cfg.sts, 'ANDROID')
 
-    const api = await fetchPlayer(id, config)
+    await m.reply(`📡 DEBUG\nANDROID Status: ${api.status}`)
 
-    await m.reply(`📡 DEBUG\nAPI Status: ${api.status}`)
+    let data = analyze(api.json)
 
-    const data = analyzeFormats(api.json)
+    await m.reply(`📡 DEBUG\nA Formats: ${data.f} | A Adaptive: ${data.a}`)
 
-    await m.reply(
-      `📡 DEBUG\nFormats: ${data.totalFormats}\nAdaptive: ${data.totalAdaptive}`
-    )
+    if (!data.direct.length && !data.cipher.length) {
+      await m.reply('📡 DEBUG\nFallback a IOS...')
 
-    await m.reply(
-      `📡 DEBUG\nDirect URLs: ${data.direct.length}\nCipher: ${data.cipher.length}`
-    )
+      api = await fetchPlayer(id, cfg.key, cfg.sts, 'IOS')
 
-    if (data.direct.length > 0) {
-      await m.reply('📡 DEBUG\nVideo directo:\n' + data.direct[0])
+      await m.reply(`📡 DEBUG\nIOS Status: ${api.status}`)
+
+      data = analyze(api.json)
+
+      await m.reply(`📡 DEBUG\nI Formats: ${data.f} | I Adaptive: ${data.a}`)
+    }
+
+    await m.reply(`📡 DEBUG\nDirect: ${data.direct.length} | Cipher: ${data.cipher.length}`)
+
+    if (data.direct.length) {
+      await m.reply('📡 DEBUG\nURL:\n' + data.direct[0])
 
       await conn.sendMessage(m.chat, {
         video: { url: data.direct[0] },
         caption: '✅ Video descargado'
       }, { quoted: m })
-
-    } else if (data.cipher.length > 0) {
-      await m.reply('📡 DEBUG\nRequiere descifrado')
+    } else if (data.cipher.length) {
       throw new Error('CIPHER')
     } else {
       throw new Error('NO_VIDEO')
@@ -162,15 +187,11 @@ let handler = async (m, { conn, args }) => {
 
     let msg = '❌ Error\n\n'
 
-    if (e.message === 'NO_API_KEY') {
-      msg += '❌ No se pudo obtener API KEY'
-    } else if (e.message === 'NO_VIDEO') {
-      msg += '❌ No se encontró video'
-    } else if (e.message === 'CIPHER') {
-      msg += '⚠️ Video protegido'
-    } else {
-      msg += '⚠️ Error inesperado\n' + e.message
-    }
+    if (e.message === 'NO_ID') msg += 'ID inválido'
+    else if (e.message === 'NO_KEY') msg += 'Sin API KEY'
+    else if (e.message === 'CIPHER') msg += '⚠️ Requiere descifrado'
+    else if (e.message === 'NO_VIDEO') msg += '❌ No se encontró video'
+    else msg += e.message
 
     await m.reply(msg)
   }
