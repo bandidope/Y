@@ -210,24 +210,34 @@ export const handler = async (m, conn, plugins) => {
         const isRegistered = isOwner || database.data.users?.[m.sender]?.registered || false
 
         const isGroup = m.isGroup
-        let isAdmin = false
-        let isBotAdmin = false
+let isAdmin = false
+let isBotAdmin = false
 
-        if (isGroup) {
-            try {
-                const groupMeta = await conn.groupMetadata(m.chat)
-                const participant = groupMeta.participants.find(p =>
-                    p.jid === m.sender || p.id === m.sender
-                )
-                isAdmin = !!participant?.admin || isOwner
+if (isGroup) {
+    try {
+        const groupMeta = await conn.groupMetadata(m.chat)
 
-                const botJid = conn.user.id.split(':')[0] + '@s.whatsapp.net'
-                const botParticipant = groupMeta.participants.find(p =>
-                    p.jid === botJid || p.id === botJid
-                )
-                isBotAdmin = !!botParticipant?.admin
-            } catch {}
-        }
+        const clean = v => (v || '').split('@')[0].split(':')[0]
+
+        const senderNum = clean(m.sender)
+        const botNum = clean(conn.user.id)
+
+        const participant = groupMeta.participants.find(p => {
+            const id = clean(p.jid || p.id)
+            return id === senderNum
+        })
+
+        isAdmin = !!participant?.admin || isOwner
+
+        const botParticipant = groupMeta.participants.find(p => {
+            const id = clean(p.jid || p.id)
+            return id === botNum
+        })
+
+        isBotAdmin = !!botParticipant?.admin
+
+    } catch {}
+}
 
         if (!database.data.users) database.data.users = {}
         if (!database.data.groups) database.data.groups = {}
