@@ -1,6 +1,7 @@
 import fs from "fs"
 import path from "path"
 import pino from "pino"
+import chalk from "chalk"
 import {
   makeWASocket,
   useMultiFileAuthState,
@@ -11,43 +12,35 @@ import {
 } from "@whiskeysockets/baileys"
 
 import { smsg } from "../lib/simple.js"
-import { handler as msgHandler } from "../handler.js"
+import { handler as mainHandler } from "../handler.js"
 
 if (!Array.isArray(global.conns)) global.conns = []
 if (!global.subLocks) global.subLocks = new Map()
 
-const MAX_SUBBOTS = 15
-const MAX_PER_USER = 2
-const SUBBOT_DIR = global.subBotsDir || "./Sessions/SubBots"
+const SUBBOT_DIR = "Sessions/SubBots"
+const MAX_SUBBOTS = 5
 const PAIRING_TIMEOUT = 120000
 
-function isSocketReady(sock) {
-  return sock?.ws?.socket?.readyState === 1 && !!sock?.user?.jid
+function normalizePhone(input) {
+  if (!input) return null
+  let num = input.replace(/[\s\-().]/g, "")
+  if (num.startsWith("+")) num = num.slice(1)
+  if (!/^\d+$/.test(num)) return null
+  if (num.length < 8 || num.length > 15) return null
+  return num
 }
 
-function cleanPhone(jid) {
-  return jid?.replace(/[^0-9]/g, "") || null
-}
+async function handler(m, { conn, args, plugins }) {
+  const text = args.join(" ")
 
-const handler = async (m, { conn, prefix }) => {
-  const userPhone = cleanPhone(m.sender)
+  if (!text?.startsWith("+")) return m.reply("Ejemplo: .code +521234567890")
 
-  const active = global.conns.filter(isSocketReady).length
-  if (active >= MAX_SUBBOTS) {
-    return m.reply(`◇ Límite alcanzado\n✧ ${active}/${MAX_SUBBOTS}`)
+  if (global.conns.length >= MAX_SUBBOTS) {
+    return m.reply("⚠️ Límite de subbots alcanzado")
   }
 
-  if (userPhone) {
-    const count = global.conns.filter(c =>
-      isSocketReady(c) && cleanPhone(c.user?.jid) === userPhone
-    ).length
-
-    if (count >= MAX_PER_USER) {
-      return m.reply(`◇ Máximo alcanzado\n✧ ${count}/${MAX_PER_USER}\n› usa ${prefix}stop`)
-    }
-  }
-
-  const number = m.sender.split("@")[0]
+  const number = normalizePhone(text)
+  if (!number) return m.reply("❌ Número inválido")
 
   if (global.subLocks.get(number)) {
     return m.reply("⏳ Ya se está generando un código para ese número")
@@ -58,9 +51,9 @@ const handler = async (m, { conn, prefix }) => {
   const sessionPath = path.join(SUBBOT_DIR, number)
   fs.mkdirSync(sessionPath, { recursive: true })
 
-  await m.reply(`◇ Generando código para +${number}...`)
+  const msg = await m.reply(`🔄 Generando código para +${number}...`)
 
-  startSubBot(sessionPath, number, m, conn, true)
+  startSubBot(sessionPath, number, m, conn, msg, plugins)
 }
 
 handler.help = ["code"]
@@ -69,8 +62,8 @@ handler.command = ["code", "serbot"]
 
 export default handler
 
-async function startSubBot(sessionPath, number, m, conn, isNew = false) {
-  let retry = 0
+
+async function startSubBot(sessionPath, number, m, conn, msg, plugins) {
   let connected = false
   let timeout
 
@@ -80,136 +73,89 @@ async function startSubBot(sessionPath, number, m, conn, isNew = false) {
     global.conns = global.conns.filter(c => c.sessionPath !== sessionPath)
   }
 
-  const start = async () => {
-    try {
-      const { state, saveCreds } = await useMultiFileAuthState(sessionPath)
-      const { version } = await fetchLatestBaileysVersion()
-      const logger = pino({ level: "silent" })
+  try {
+    const { state, saveCreds } = await useMultiFileAuthState(sessionPath)
+    const { version } = await fetchLatestBaileysVersion()
 
-      const sock = makeWASocket({
-        version,
-        logger,
-        browser: Browsers.macOS("Chrome"),
-        auth: {
-          creds: state.creds,
-          keys: makeCacheableSignalKeyStore(state.keys, logger)
-        },
-        markOnlineOnConnect: false,
-        syncFullHistory: false,
-        generateHighQualityLinkPreview: true,
-        keepAliveIntervalMs: 15000,
-        connectTimeoutMs: 10000
-      })
+    const sock = makeWASocket({
+      version,
+      logger: pino({ level: "silent" }),
+      browser: Browsers.macOS("Chrome"),
+      auth: {
+        creds: state.creds,
+        keys: makeCacheableSignalKeyStore(state.keys)
+      }
+    })
 
-      sock.sessionPath = sessionPath
+    sock.sessionPath = sessionPath
 
-      sock.ev.on("creds.update", saveCreds)
+    sock.ev.on("creds.update", saveCreds)
 
-      sock.ws.on("CB:ib,,dirty", async () => {
-        try { await sock.ws.close() } catch {}
-      })
+    sock.ev.on("messages.upsert", async ({ messages, type }) => {
+      if (type !== "notify") return
+      let msg = messages[0]
+      if (!msg?.message) return
 
-      sock.ev.on("messages.upsert", async ({ messages, type }) => {
-        try {
-          if (type !== "notify") return
-          let msg = messages[0]
-          if (!msg?.message) return
+      if (Object.keys(msg.message)[0] === "ephemeralMessage") {
+        msg.message = msg.message.ephemeralMessage.message
+      }
 
-          if (Object.keys(msg.message)[0] === "ephemeralMessage") {
-            msg.message = msg.message.ephemeralMessage.message
-          }
+      msg = await smsg(sock, msg)
 
-          if (msg.key?.remoteJid === "status@broadcast") return
-          if (msg.key?.id?.startsWith("BAE5") && msg.key.id.length === 16) return
+      await mainHandler(msg, sock, plugins)
+    })
 
-          msg = smsg(sock, msg)
-          await msgHandler(msg, sock, global.plugins)
-        } catch {}
-      })
+    setTimeout(async () => {
+      try {
+        if (!state.creds.registered) {
+          let code = await sock.requestPairingCode(number)
+          code = code.match(/.{1,4}/g)?.join("-") || code
 
-      if (isNew) {
-        setTimeout(async () => {
-          try {
-            if (!state.creds.registered) {
-              let code = await sock.requestPairingCode(number)
-              code = code.match(/.{1,4}/g)?.join("-") || code
+          await conn.sendMessage(m.chat, {
+            text: `🔑 Código para +${number}:\n${code}`
+          }, { quoted: m })
 
-              await conn.sendMessage(m.chat, {
-                text: `◆ Vinculación\n\n✧ Número › +${number}\n\nIngresa este código:\n\n🔑 ${code}`
+          timeout = setTimeout(() => {
+            if (!connected) {
+              clean()
+              conn.sendMessage(m.chat, {
+                text: "⏰ Tiempo agotado, sesión eliminada"
               }, { quoted: m })
-
-              timeout = setTimeout(() => {
-                if (!connected) {
-                  clean()
-                  conn.sendMessage(m.chat, {
-                    text: "⏰ Tiempo agotado, sesión eliminada"
-                  }, { quoted: m })
-                }
-              }, PAIRING_TIMEOUT)
             }
-          } catch (e) {
-            clean()
-            conn.sendMessage(m.chat, {
-              text: `❌ Error generando código\n${e.message}`
-            }, { quoted: m })
-          }
-        }, 3000)
+          }, PAIRING_TIMEOUT)
+        }
+      } catch (e) {
+        clean()
+        m.reply(`❌ Error:\n${e.message}`)
       }
+    }, 3000)
 
-      sock.ev.on("connection.update", async update => {
-        const { connection, lastDisconnect } = update
-        const reason = lastDisconnect?.error?.output?.statusCode
+    sock.ev.on("connection.update", async ({ connection, lastDisconnect }) => {
+      const reason = lastDisconnect?.error?.output?.statusCode
 
-        if (connection === "open") {
-          connected = true
-          clearTimeout(timeout)
+      if (connection === "open") {
+        connected = true
+        clearTimeout(timeout)
 
-          global.subLocks.delete(number)
+        global.subLocks.delete(number)
+        global.conns.push(sock)
 
-          const i = global.conns.findIndex(c => c.sessionPath === sessionPath)
-          if (i !== -1) global.conns.splice(i, 1)
-
-          global.conns.push(sock)
-
-          if (m) {
-            await conn.sendMessage(m.chat, {
-              text: `✅ SubBot conectado: +${number}`
-            }, { quoted: m })
-          }
-        }
-
-        if (connection === "close") {
-          global.conns = global.conns.filter(c => c.sessionPath !== sessionPath)
-
-          if ([DisconnectReason.loggedOut, DisconnectReason.forbidden].includes(reason)) {
-            clean()
-            return
-          }
-
-          if (reason === DisconnectReason.badSession) {
-            clean()
-            return
-          }
-
-          if (retry >= 5) {
-            clean()
-            return
-          }
-
-          retry++
-          setTimeout(start, 2000)
-        }
-      })
-
-    } catch (e) {
-      clean()
-      if (m) {
-        conn.sendMessage(m.chat, {
-          text: `❌ Error iniciando subbot\n${e.message}`
+        await conn.sendMessage(m.chat, {
+          text: `✅ Subbot conectado: +${number}`
         }, { quoted: m })
-      }
-    }
-  }
 
-  start()
+        console.log(chalk.green(`Subbot conectado: +${number}`))
+      }
+
+      if (connection === "close") {
+        if ([DisconnectReason.loggedOut, DisconnectReason.forbidden].includes(reason)) {
+          clean()
+        }
+      }
+    })
+
+  } catch (e) {
+    clean()
+    m.reply(`❌ Error iniciando subbot:\n${e.message}`)
+  }
 }
