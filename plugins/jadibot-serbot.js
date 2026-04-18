@@ -3,197 +3,90 @@ import fs from 'fs'
 import { database } from '../lib/database.js'
 import {
     makeWASocket,
-    useMultiFileAuthState,
-    fetchLatestBaileysVersion,
-    makeCacheableSignalKeyStore,
-    Browsers,
-    DisconnectReason
+    useMultiFileAuthState
 } from '@whiskeysockets/baileys'
-import { smsg } from '../lib/simple.js'
-import { handler as msgHandler, loadEvents } from '../handler.js'
-import pino from 'pino'
 
 if (!Array.isArray(global.conns)) global.conns = []
 
 const MAX_SUBBOTS = 15
 const MAX_PER_USER = 2
-const COOLDOWN_MS = 120000
-
-function msToTime(duration) {
-    const seconds = Math.floor((duration / 1000) % 60)
-    const minutes = Math.floor((duration / (1000 * 60)) % 60)
-    const hours = Math.floor((duration / (1000 * 60 * 60)) % 24)
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
-}
 
 function isSocketReady(sock) {
-    if (!sock) return false
-    return sock.ws?.socket?.readyState === 1 && !!sock.user?.jid
+    return sock?.ws?.socket?.readyState === 1 && !!sock?.user?.jid
 }
 
 function cleanPhone(jid) {
     return jid?.replace(/[^0-9]/g, '') || null
 }
 
-const handler = async (m, { conn, args, prefix }) => {
+const handler = async (m, { conn, prefix }) => {
     const userId = m.sender
-    const now = Date.now()
 
     if (!database.data.users[userId]) database.data.users[userId] = {}
-    if (!database.data.users[userId].Subs) database.data.users[userId].Subs = 0
 
-    const lastUse = database.data.users[userId].Subs
-    if (now - lastUse < COOLDOWN_MS) {
-        const remaining = msToTime(COOLDOWN_MS - (now - lastUse))
-        return m.reply(`${global.vs}\n\n  ◇ Espera antes de usar este comando.\n  ✧ Tiempo restante › ${remaining}`)
-    }
-
-    const activeCount = global.conns.filter(c => isSocketReady(c)).length
-    if (activeCount >= MAX_SUBBOTS) {
-        return m.reply(`${global.vs}\n\n  ◇ Límite de SubBots alcanzado.\n  ✧ Activos › ${activeCount} / ${MAX_SUBBOTS}`)
+    const active = global.conns.filter(isSocketReady).length
+    if (active >= MAX_SUBBOTS) {
+        return m.reply(`${global.vs}\n\n◇ Límite alcanzado\n✧ ${active}/${MAX_SUBBOTS}`)
     }
 
     const userPhone = cleanPhone(m.sender)
     if (userPhone) {
-        const userCount = global.conns.filter(c =>
+        const count = global.conns.filter(c =>
             isSocketReady(c) && cleanPhone(c.user?.jid) === userPhone
         ).length
-        if (userCount >= MAX_PER_USER) {
-            return m.reply(`${global.vs}\n\n  ◇ Ya tienes el máximo de SubBots activos.\n  ✧ Tus activos › ${userCount} / ${MAX_PER_USER}\n  › Usa ${prefix}stop para desconectar uno`)
+
+        if (count >= MAX_PER_USER) {
+            return m.reply(`${global.vs}\n\n◇ Máximo alcanzado\n✧ ${count}/${MAX_PER_USER}\n› usa ${prefix}stop`)
         }
     }
 
-    const targetPhone = m.sender.split('@')[0]
-    const sessionPath = path.join(global.subBotsDir || './Sessions/SubBots', targetPhone)
+    const number = m.sender.split('@')[0]
+
+    const sessionPath = path.join(global.subBotsDir || './Sessions/SubBots', number)
     if (!fs.existsSync(sessionPath)) fs.mkdirSync(sessionPath, { recursive: true })
 
-    database.data.users[userId].Subs = now
-
-    await m.reply(`${global.vs}\n\n  ◇ Generando código para +${targetPhone}...`)
+    await m.reply(`${global.vs}\n\n◇ Generando código para +${number}...`)
 
     try {
-        const { state, saveCreds } = await useMultiFileAuthState(sessionPath)
-        const { version } = await fetchLatestBaileysVersion()
-        const logger = pino({ level: 'silent' })
+        const { state } = await useMultiFileAuthState(sessionPath)
 
         const sock = makeWASocket({
-            version,
-            logger,
-            printQRInTerminal: false,
-            browser: Browsers.macOS('Chrome'),
-            auth: {
-                creds: state.creds,
-                keys: makeCacheableSignalKeyStore(state.keys, logger)
-            },
-            markOnlineOnConnect: false,
-            generateHighQualityLinkPreview: true,
-            syncFullHistory: false,
-            getMessage: async () => '',
-            keepAliveIntervalMs: 45000
+            auth: state,
+            printQRInTerminal: false
         })
 
-        sock.sessionPath = sessionPath
-        sock.ev.on('creds.update', saveCreds)
-
-        // Envía primero las instrucciones
-        const msgInstructions = await conn.sendMessage(m.chat, {
-            text:
-                `${global.vs}\n\n` +
-                `  ◆ Código de emparejamiento\n\n` +
-                `  ✧ Número › +${targetPhone}\n\n` +
-                `  › Abre WhatsApp\n` +
-                `  › Toca los tres puntos\n` +
-                `  › Dispositivos vinculados\n` +
-                `  › Vincular con número de teléfono\n` +
-                `  › Ingresa el código que llegará abajo\n\n` +
-                `  ◇ Generando código...`
-        }, { quoted: m }).catch(() => null)
-
-        // Pide el code a los 3s y lo manda en mensaje separado (abajo)
         setTimeout(async () => {
             try {
                 if (!state.creds.registered) {
-                    let secret = await sock.requestPairingCode(targetPhone)
-                    secret = secret?.match(/.{1,4}/g)?.join('-') || secret
+                    let code = await sock.requestPairingCode(number)
+                    code = code.match(/.{1,4}/g)?.join('-') || code
 
-                    const msgCode = await conn.sendMessage(m.chat, {
-                        text: secret
-                    }, { quoted: msgInstructions ?? m })
+                    await conn.sendMessage(m.chat, {
+                        text:
+                            `${global.vs}\n\n` +
+                            `◆ Vinculación\n\n` +
+                            `✧ Número › +${number}\n\n` +
+                            `1. WhatsApp > Dispositivos vinculados\n` +
+                            `2. Vincular con número\n` +
+                            `3. Ingresa este código:\n\n` +
+                            `🔑 ${code}`
+                    }, { quoted: m })
 
-                    if (msgCode?.key) {
-                        setTimeout(() => conn.sendMessage(m.chat, { delete: msgCode.key }).catch(() => {}), 60000)
-                    }
+                    global.startSubBot(sessionPath, number)
+
+                    setTimeout(() => {
+                        if (!global.conns.find(c => c.sessionPath === sessionPath)) {
+                            fs.rmSync(sessionPath, { recursive: true, force: true })
+                        }
+                    }, 120000)
                 }
             } catch (e) {
-                console.error('Error generando code:', e.message)
-                await m.reply(`${global.vs}\n\n  ◇ Error al generar código › ${e.message}`)
+                await m.reply(`❌ Error: ${e.message}`)
             }
         }, 3000)
 
-        sock.ev.on('connection.update', async (update) => {
-            const { connection, lastDisconnect } = update
-            const reason = lastDisconnect?.error?.output?.statusCode
-
-            if (connection === 'open') {
-                sock.startTime = Date.now()
-                await loadEvents(sock).catch(() => {})
-
-                const idx = global.conns.findIndex(c => c.sessionPath === sessionPath)
-                if (idx !== -1) global.conns.splice(idx, 1)
-                global.conns.push(sock)
-
-                await conn.sendMessage(m.chat, {
-                    text:
-                        `${global.vs}\n\n` +
-                        `  ◆ Conexión exitosa\n\n` +
-                        `  ✧ Usuario › ${sock.user?.name || targetPhone}\n` +
-                        `  ✧ Número › +${targetPhone}\n` +
-                        `  ✧ Subbots activos › ${global.conns.length}`
-                }, { quoted: m }).catch(() => {})
-            }
-
-            if (connection === 'close') {
-                global.conns = global.conns.filter(c => c.sessionPath !== sessionPath)
-
-                if ([DisconnectReason.loggedOut, DisconnectReason.forbidden].includes(reason)) {
-                    // Sesión cerrada intencionalmente: borrar y notificar
-                    fs.rmSync(sessionPath, { recursive: true, force: true })
-                    conn.sendMessage(m.chat, {
-                        text: `${global.vs}\n\n  ◇ SubBot desvinculado › +${targetPhone}\n  ✧ La sesión fue eliminada`
-                    }, { quoted: m }).catch(() => {})
-                } else if (reason === DisconnectReason.badSession) {
-                    // Sesión corrupta: borrar y pedir que vincule de nuevo
-                    fs.rmSync(sessionPath, { recursive: true, force: true })
-                    conn.sendMessage(m.chat, {
-                        text: `${global.vs}\n\n  ◇ Sesión corrupta › +${targetPhone}\n  ✧ Usa el comando code para vincular de nuevo`
-                    }, { quoted: m }).catch(() => {})
-                } else {
-                    // Cualquier otro error: reconectar con delay para evitar loop instantáneo
-                    setTimeout(() => global.startSubBot?.(sessionPath), 5000)
-                }
-            }
-        })
-
-        sock.ev.on('messages.upsert', async ({ messages, type }) => {
-            try {
-                if (type !== 'notify') return
-                let msg = messages[0]
-                if (!msg?.message) return
-                if (Object.keys(msg.message)[0] === 'ephemeralMessage') {
-                    msg.message = msg.message.ephemeralMessage.message
-                }
-                if (msg.key?.remoteJid === 'status@broadcast') return
-                if (msg.key?.id?.startsWith('BAE5') && msg.key.id.length === 16) return
-                msg = smsg(sock, msg)
-                await msgHandler(msg, sock, global.plugins)
-            } catch (e) {
-                console.error('Error mensaje subbot:', e.message)
-            }
-        })
-
     } catch (e) {
-        console.error('Error jadibot:', e.message)
-        await m.reply(`${global.vs}\n\n  ◇ Error › ${e.message}`)
+        await m.reply(`❌ Error: ${e.message}`)
     }
 }
 
