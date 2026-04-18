@@ -1,0 +1,159 @@
+import path from 'path'
+import fs from 'fs'
+import { database } from '../lib/database.js'
+import {
+    makeWASocket,
+    useMultiFileAuthState,
+    fetchLatestBaileysVersion,
+    makeCacheableSignalKeyStore,
+    Browsers,
+    DisconnectReason
+} from '@whiskeysockets/baileys'
+import pino from 'pino'
+
+if (!Array.isArray(global.conns)) global.conns = []
+
+const MAX_SUBBOTS = 15
+const MAX_PER_USER = 2
+const PAIRING_TIMEOUT = 120000
+
+function isSocketReady(sock) {
+    return sock?.ws?.socket?.readyState === 1 && !!sock?.user?.jid
+}
+
+function cleanPhone(jid) {
+    return jid?.replace(/[^0-9]/g, '') || null
+}
+
+const handler = async (m, { conn, prefix }) => {
+    const userId = m.sender
+
+    if (!database.data.users[userId]) database.data.users[userId] = {}
+
+    const active = global.conns.filter(isSocketReady).length
+    if (active >= MAX_SUBBOTS) {
+        return m.reply(`${global.vs}\n\n◇ Límite alcanzado\n✧ ${active}/${MAX_SUBBOTS}`)
+    }
+
+    const userPhone = cleanPhone(m.sender)
+    if (userPhone) {
+        const count = global.conns.filter(c =>
+            isSocketReady(c) && cleanPhone(c.user?.jid) === userPhone
+        ).length
+
+        if (count >= MAX_PER_USER) {
+            return m.reply(`${global.vs}\n\n◇ Máximo alcanzado\n✧ ${count}/${MAX_PER_USER}\n› usa ${prefix}stop`)
+        }
+    }
+
+    const number = m.sender.split('@')[0]
+    const sessionPath = path.join(global.subBotsDir || './Sessions/SubBots', number)
+
+    if (!fs.existsSync(sessionPath)) {
+        fs.mkdirSync(sessionPath, { recursive: true })
+    }
+
+    await m.reply(`${global.vs}\n\n◇ Generando código para +${number}...`)
+
+    try {
+        const { state, saveCreds } = await useMultiFileAuthState(sessionPath)
+        const { version } = await fetchLatestBaileysVersion()
+        const logger = pino({ level: 'silent' })
+
+        let connected = false
+        let timeout
+
+        const sock = makeWASocket({
+            version,
+            logger,
+            browser: Browsers.macOS('Chrome'),
+            auth: {
+                creds: state.creds,
+                keys: makeCacheableSignalKeyStore(state.keys, logger)
+            },
+            printQRInTerminal: false,
+            markOnlineOnConnect: false,
+            syncFullHistory: false,
+            generateHighQualityLinkPreview: true,
+            keepAliveIntervalMs: 20000
+        })
+
+        sock.ev.on('creds.update', saveCreds)
+
+        setTimeout(async () => {
+            try {
+                if (!state.creds.registered) {
+                    let code = await sock.requestPairingCode(number)
+                    code = code?.match(/.{1,4}/g)?.join('-') || code
+
+                    await conn.sendMessage(m.chat, {
+                        text:
+                            `${global.vs}\n\n◆ Vinculación\n\n✧ Número › +${number}`
+                    }, { quoted: m })
+
+                    await conn.sendMessage(m.chat, {
+                        text: `🔑 ${code}`
+                    }, { quoted: m })
+
+                    timeout = setTimeout(() => {
+                        if (!connected) {
+                            try { sock.ws.close() } catch {}
+                            fs.rmSync(sessionPath, { recursive: true, force: true })
+                            conn.sendMessage(m.chat, {
+                                text: `${global.vs}\n\n◇ Tiempo agotado\n✧ Sesión eliminada`
+                            }, { quoted: m })
+                        }
+                    }, PAIRING_TIMEOUT)
+                }
+            } catch (e) {
+                try { sock.ws.close() } catch {}
+                fs.rmSync(sessionPath, { recursive: true, force: true })
+                await m.reply(`❌ Error: ${e.message}`)
+            }
+        }, 3000)
+
+        sock.ev.on('connection.update', async (update) => {
+            const { connection, lastDisconnect } = update
+            const reason = lastDisconnect?.error?.output?.statusCode
+
+            if (connection === 'open') {
+                connected = true
+                clearTimeout(timeout)
+
+                try { sock.ws.close() } catch {}
+
+                setTimeout(() => {
+                    global.startSubBot(sessionPath)
+                }, 2000)
+
+                await conn.sendMessage(m.chat, {
+                    text: `${global.vs}\n\n◇ Vinculado correctamente\n✧ Conectando subbot...`
+                }, { quoted: m })
+            }
+
+            if (connection === 'close') {
+                if (connected) return
+
+                if ([
+                    DisconnectReason.loggedOut,
+                    DisconnectReason.forbidden,
+                    DisconnectReason.badSession
+                ].includes(reason)) {
+                    fs.rmSync(sessionPath, { recursive: true, force: true })
+                    await conn.sendMessage(m.chat, {
+                        text: `${global.vs}\n\n◇ Sesión inválida\n✧ Vuelve a generar código`
+                    }, { quoted: m })
+                }
+            }
+        })
+
+    } catch (e) {
+        await m.reply(`❌ Error: ${e.message}`)
+    }
+}
+
+handler.help = ['code']
+handler.tags = ['serbot']
+handler.command = ['code', 'serbot']
+
+export default handler
