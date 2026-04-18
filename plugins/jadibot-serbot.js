@@ -6,7 +6,8 @@ import {
     useMultiFileAuthState,
     fetchLatestBaileysVersion,
     makeCacheableSignalKeyStore,
-    Browsers
+    Browsers,
+    DisconnectReason
 } from '@whiskeysockets/baileys'
 import pino from 'pino'
 
@@ -14,6 +15,7 @@ if (!Array.isArray(global.conns)) global.conns = []
 
 const MAX_SUBBOTS = 15
 const MAX_PER_USER = 2
+const PAIRING_TIMEOUT = 120000
 
 function isSocketReady(sock) {
     return sock?.ws?.socket?.readyState === 1 && !!sock?.user?.jid
@@ -58,6 +60,9 @@ const handler = async (m, { conn, prefix }) => {
         const { version } = await fetchLatestBaileysVersion()
         const logger = pino({ level: 'silent' })
 
+        let connected = false
+        let timeout
+
         const sock = makeWASocket({
             version,
             logger,
@@ -69,7 +74,8 @@ const handler = async (m, { conn, prefix }) => {
             printQRInTerminal: false,
             markOnlineOnConnect: false,
             syncFullHistory: false,
-            generateHighQualityLinkPreview: true
+            generateHighQualityLinkPreview: true,
+            keepAliveIntervalMs: 20000
         })
 
         sock.ev.on('creds.update', saveCreds)
@@ -82,29 +88,64 @@ const handler = async (m, { conn, prefix }) => {
 
                     await conn.sendMessage(m.chat, {
                         text:
-                            `${global.vs}\n\n` +
-                            `◆ Vinculación\n\n` +
-                            `✧ Número › +${number}\n\n` +
-                            `1. WhatsApp > Dispositivos vinculados\n` +
-                            `2. Vincular con número\n` +
-                            `3. Ingresa este código:\n\n` +
-                            `🔑 ${code}`
+                            `${global.vs}\n\n◆ Vinculación\n\n✧ Número › +${number}`
                     }, { quoted: m })
 
-                    setTimeout(() => {
-                        global.startSubBot(sessionPath)
-                    }, 5000)
+                    await conn.sendMessage(m.chat, {
+                        text: `🔑 ${code}`
+                    }, { quoted: m })
 
-                    setTimeout(() => {
-                        if (!global.conns.find(c => c.sessionPath === sessionPath)) {
+                    timeout = setTimeout(() => {
+                        if (!connected) {
+                            try { sock.ws.close() } catch {}
                             fs.rmSync(sessionPath, { recursive: true, force: true })
+                            conn.sendMessage(m.chat, {
+                                text: `${global.vs}\n\n◇ Tiempo agotado\n✧ Sesión eliminada`
+                            }, { quoted: m })
                         }
-                    }, 120000)
+                    }, PAIRING_TIMEOUT)
                 }
             } catch (e) {
+                try { sock.ws.close() } catch {}
+                fs.rmSync(sessionPath, { recursive: true, force: true })
                 await m.reply(`❌ Error: ${e.message}`)
             }
         }, 3000)
+
+        sock.ev.on('connection.update', async (update) => {
+            const { connection, lastDisconnect } = update
+            const reason = lastDisconnect?.error?.output?.statusCode
+
+            if (connection === 'open') {
+                connected = true
+                clearTimeout(timeout)
+
+                try { sock.ws.close() } catch {}
+
+                setTimeout(() => {
+                    global.startSubBot(sessionPath)
+                }, 2000)
+
+                await conn.sendMessage(m.chat, {
+                    text: `${global.vs}\n\n◇ Vinculado correctamente\n✧ Conectando subbot...`
+                }, { quoted: m })
+            }
+
+            if (connection === 'close') {
+                if (connected) return
+
+                if ([
+                    DisconnectReason.loggedOut,
+                    DisconnectReason.forbidden,
+                    DisconnectReason.badSession
+                ].includes(reason)) {
+                    fs.rmSync(sessionPath, { recursive: true, force: true })
+                    await conn.sendMessage(m.chat, {
+                        text: `${global.vs}\n\n◇ Sesión inválida\n✧ Vuelve a generar código`
+                    }, { quoted: m })
+                }
+            }
+        })
 
     } catch (e) {
         await m.reply(`❌ Error: ${e.message}`)
