@@ -23,7 +23,6 @@ import { handler, loadEvents } from './handler.js'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const pluginsDir = path.join(__dirname, 'plugins')
 
-const SUBBOTS_DIR = './Sessions/SubBots'
 global.conns = []
 
 const log = {
@@ -152,131 +151,6 @@ else if (!fs.existsSync('./Sessions/Owner/creds.json')) {
   }
 }
 
-export async function startSubBot (sessionPath) {
-  try {
-    const { state, saveCreds } = await useMultiFileAuthState(sessionPath)
-    const { version } = await fetchLatestBaileysVersion()
-    const logger = pino({ level: 'silent' })
-
-    const subConn = makeWASocket({
-      version,
-      logger,
-      printQRInTerminal: false,
-      browser: Browsers.macOS('Chrome'),
-      auth: {
-        creds: state.creds,
-        keys: makeCacheableSignalKeyStore(state.keys, logger)
-      },
-      markOnlineOnConnect: false,
-      generateHighQualityLinkPreview: true,
-      syncFullHistory: false,
-      getMessage: async () => '',
-      keepAliveIntervalMs: 45000
-    })
-
-    subConn.sessionPath = sessionPath
-
-    subConn.decodeJid = jid => {
-      if (!jid) return jid
-      if (/:\d+@/gi.test(jid)) {
-        const decode = jidDecode(jid) || {}
-        return decode.user && decode.server ? decode.user + '@' + decode.server : jid
-      }
-      return jid
-    }
-
-    subConn.ev.on('creds.update', saveCreds)
-
-    subConn.ev.on('connection.update', async update => {
-      const { connection, lastDisconnect } = update
-      const reason = lastDisconnect?.error?.output?.statusCode
-
-      if (connection === 'open') {
-        const idx = global.conns.findIndex(c => c.sessionPath === sessionPath)
-        if (idx !== -1) global.conns.splice(idx, 1)
-        global.conns.push(subConn)
-        log.success(`SubBot conectado: ${subConn.user?.name || 'Desconocido'} [${sessionPath}]`)
-        log.info(`Total subbots activos: ${global.conns.length}`)
-        await loadEvents(subConn)
-      }
-
-      if (connection === 'close') {
-        global.conns = global.conns.filter(c => c.sessionPath !== sessionPath)
-        log.warn(`SubBot desconectado [${sessionPath}] | Razón: ${reason}`)
-
-        if ([
-          DisconnectReason.connectionLost,
-          DisconnectReason.connectionClosed,
-          DisconnectReason.restartRequired,
-          DisconnectReason.timedOut,
-          DisconnectReason.badSession
-        ].includes(reason)) {
-          log.warn(`Reconectando subbot... (${reason})`)
-          startSubBot(sessionPath)
-        } else if (reason === DisconnectReason.loggedOut) {
-          log.warn(`Sesión subbot cerrada. Eliminando [${sessionPath}]...`)
-          fs.rmSync(sessionPath, { recursive: true, force: true })
-        } else if (reason === DisconnectReason.forbidden) {
-          log.error(`Acceso denegado subbot. Eliminando [${sessionPath}]...`)
-          fs.rmSync(sessionPath, { recursive: true, force: true })
-        } else {
-          log.warn(`Reconectando subbot por desconexión desconocida (${reason})...`)
-          startSubBot(sessionPath)
-        }
-      }
-    })
-
-    subConn.ev.on('messages.upsert', async ({ messages, type }) => {
-      try {
-        if (type !== 'notify') return
-        let m = messages[0]
-        if (!m?.message) return
-
-        if (Object.keys(m.message)[0] === 'ephemeralMessage') {
-          m.message = m.message.ephemeralMessage.message
-        }
-
-        if (m.key?.remoteJid === 'status@broadcast') return
-        if (m.key?.id?.startsWith('BAE5') && m.key.id.length === 16) return
-
-        m = await smsg(subConn, m)
-        await handler(m, subConn, plugins)
-      } catch (e) {
-        log.error(`Error en mensaje subbot: ${e.message}`)
-      }
-    })
-
-    return subConn
-  } catch (e) {
-    log.error(`Error iniciando subbot [${sessionPath}]: ${e.message}`)
-    return null
-  }
-}
-
-async function autoConnectSubBots () {
-  try {
-    if (!fs.existsSync(SUBBOTS_DIR)) {
-      fs.mkdirSync(SUBBOTS_DIR, { recursive: true })
-      return
-    }
-    const folders = fs.readdirSync(SUBBOTS_DIR).filter(f => {
-      const fullPath = path.join(SUBBOTS_DIR, f)
-      return fs.statSync(fullPath).isDirectory() &&
-        fs.existsSync(path.join(fullPath, 'creds.json'))
-    })
-    if (folders.length === 0) return
-    log.info(`Reconectando ${folders.length} subbot(s)...`)
-    for (const folder of folders) {
-      await startSubBot(path.join(SUBBOTS_DIR, folder))
-    }
-  } catch (e) {
-    log.error(`Error en autoConnectSubBots: ${e.message}`)
-  }
-}
-
-global.startSubBot = startSubBot
-global.subBotsDir = SUBBOTS_DIR
-
 async function startBot () {
   const { state, saveCreds } = await useMultiFileAuthState(global.sessionName)
   const { version } = await fetchLatestBaileysVersion()
@@ -340,12 +214,11 @@ async function startBot () {
     }
 
     if (connection === 'open') {
-      console.log(zeroBanner)
-      log.success(`Conectado como: ${conn.user?.name || 'Desconocido'}`)
-      log.info(`Plugins cargados: ${plugins.size}`)
-      await loadEvents(conn)
-      await autoConnectSubBots()
-    }
+  console.log(zeroBanner)
+  log.success(`Conectado como: ${conn.user?.name || 'Desconocido'}`)
+  log.info(`Plugins cargados: ${plugins.size}`)
+  await loadEvents(conn)
+}
 
     if (connection === 'close') {
       const reason = lastDisconnect?.error?.output?.statusCode
