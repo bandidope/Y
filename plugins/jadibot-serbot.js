@@ -20,6 +20,30 @@ if (!global.subLocks) global.subLocks = new Map()
 const SUBBOT_DIR = "Sessions/SubBots"
 const MAX_SUBBOTS = 5
 const PAIRING_TIMEOUT = 120000
+const VERSION_CACHE_FILE = path.resolve(".cache/baileys-version.json")
+const VERSION_CACHE_TTL = 24 * 60 * 60 * 1000
+
+let baileysVersion = null
+
+async function getVersion() {
+  if (baileysVersion) return baileysVersion
+  try {
+    if (fs.existsSync(VERSION_CACHE_FILE)) {
+      const cached = JSON.parse(fs.readFileSync(VERSION_CACHE_FILE, "utf8"))
+      if (cached.version && Date.now() - cached.ts < VERSION_CACHE_TTL) {
+        baileysVersion = cached.version
+        return baileysVersion
+      }
+    }
+    const { version } = await fetchLatestBaileysVersion()
+    baileysVersion = version
+    fs.mkdirSync(path.dirname(VERSION_CACHE_FILE), { recursive: true })
+    fs.writeFileSync(VERSION_CACHE_FILE, JSON.stringify({ version, ts: Date.now() }))
+    return version
+  } catch {
+    return [2, 2306, 9]
+  }
+}
 
 function normalizePhone(input) {
   if (!input) return null
@@ -33,14 +57,14 @@ function normalizePhone(input) {
 async function handler(m, { conn, args, plugins }) {
   const text = args.join(" ")
 
-  if (!text?.startsWith("+")) return m.reply("Ejemplo: .code +521234567890")
+  if (!text?.startsWith("+")) return
 
   if (global.conns.length >= MAX_SUBBOTS) {
     return m.reply("⚠️ Límite de subbots alcanzado")
   }
 
   const number = normalizePhone(text)
-  if (!number) return m.reply("❌ Número inválido")
+  if (!number) return m.reply("❌ No se pudo detectar tu número")
 
   if (global.subLocks.get(number)) {
     return m.reply("⏳ Ya se está generando un código para ese número")
@@ -64,98 +88,143 @@ export default handler
 
 
 async function startSubBot(sessionPath, number, m, conn, msg, plugins) {
+  let retryCount = 0
+  let codeSent = false
   let connected = false
   let timeout
 
-  const clean = () => {
+  const cleanSession = () => {
     try { fs.rmSync(sessionPath, { recursive: true, force: true }) } catch {}
     global.subLocks.delete(number)
     global.conns = global.conns.filter(c => c.sessionPath !== sessionPath)
   }
 
-  try {
-    const { state, saveCreds } = await useMultiFileAuthState(sessionPath)
-    const { version } = await fetchLatestBaileysVersion()
+  const start = async () => {
+    try {
+      const { state, saveCreds } = await useMultiFileAuthState(sessionPath)
+      const logger = pino({ level: "silent" })
 
-    const sock = makeWASocket({
-      version,
-      logger: pino({ level: "silent" }),
-      browser: Browsers.macOS("Chrome"),
-      auth: {
-        creds: state.creds,
-        keys: makeCacheableSignalKeyStore(state.keys)
-      }
-    })
+      const sock = makeWASocket({
+        version: await getVersion(),
+        logger,
+        browser: Browsers.macOS("Safari"),
+        auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, logger) },
+        markOnlineOnConnect: false,
+        syncFullHistory: false,
+        generateHighQualityLinkPreview: false,
+        keepAliveIntervalMs: 15000,
+        connectTimeoutMs: 6000,
+        defaultQueryTimeoutMs: 0,
+        emitOwnEvents: false
+      })
 
-    sock.sessionPath = sessionPath
+      sock.sessionPath = sessionPath
 
-    sock.ev.on("creds.update", saveCreds)
+      sock.ws.on("CB:ib,,dirty", async () => { try { await sock.ws.close() } catch {} })
+      sock.ev.on("creds.update", saveCreds)
 
-    sock.ev.on("messages.upsert", async ({ messages, type }) => {
-      if (type !== "notify") return
-      let msg = messages[0]
-      if (!msg?.message) return
+      sock.ev.on("messages.upsert", async ({ messages, type }) => {
+        if (type !== "notify") return
+        let msg = messages[0]
+        if (!msg?.message) return
 
-      if (Object.keys(msg.message)[0] === "ephemeralMessage") {
-        msg.message = msg.message.ephemeralMessage.message
-      }
+        if (Object.keys(msg.message)[0] === "ephemeralMessage") {
+          msg.message = msg.message.ephemeralMessage.message
+        }
 
-      msg = await smsg(sock, msg)
+        msg = await smsg(sock, msg)
 
-      await mainHandler(msg, sock, plugins)
-    })
+        await mainHandler(msg, sock, plugins)
+      })
 
-    setTimeout(async () => {
-      try {
-        if (!state.creds.registered) {
-          let code = await sock.requestPairingCode(number)
-          code = code.match(/.{1,4}/g)?.join("-") || code
+      if (codeSent || connected) return
 
+      setTimeout(async () => {
+        try {
+          if (!state.creds.registered) {
+            let code = await sock.requestPairingCode(number)
+            code = code.match(/.{1,4}/g)?.join("-") || code
+
+            codeSent = true
+
+            await conn.sendMessage(m.chat, {
+              text: `✅ Código generado para +${number}`,
+              edit: msg.key
+            }, { quoted: m })
+
+            await conn.sendMessage(m.chat, {
+              text: `🔑 ${code}`
+            }, { quoted: m })
+
+            timeout = setTimeout(() => {
+              if (!connected) {
+                cleanSession()
+                conn.sendMessage(m.chat, {
+                  text: "⏰ Tiempo agotado, sesión eliminada"
+                }, { quoted: m })
+              }
+            }, PAIRING_TIMEOUT)
+          }
+        } catch (e) {
+          cleanSession()
           await conn.sendMessage(m.chat, {
-            text: `🔑 Código para +${number}:\n${code}`
+            text: `❌ Error generando código\n${e.message}`,
+            edit: msg.key
           }, { quoted: m })
-
-          timeout = setTimeout(() => {
-            if (!connected) {
-              clean()
-              conn.sendMessage(m.chat, {
-                text: "⏰ Tiempo agotado, sesión eliminada"
-              }, { quoted: m })
-            }
-          }, PAIRING_TIMEOUT)
         }
-      } catch (e) {
-        clean()
-        m.reply(`❌ Error:\n${e.message}`)
-      }
-    }, 3000)
+      }, 3000)
 
-    sock.ev.on("connection.update", async ({ connection, lastDisconnect }) => {
-      const reason = lastDisconnect?.error?.output?.statusCode
+      sock.ev.on("connection.update", async update => {
+        const { connection, lastDisconnect } = update
+        const statusCode = lastDisconnect?.error?.output?.statusCode
 
-      if (connection === "open") {
-        connected = true
-        clearTimeout(timeout)
+        if (connection === "open") {
+          connected = true
+          clearTimeout(timeout)
 
-        global.subLocks.delete(number)
-        global.conns.push(sock)
+          global.subLocks.delete(number)
 
-        await conn.sendMessage(m.chat, {
-          text: `✅ Subbot conectado: +${number}`
+          const idx = global.conns.findIndex(c => c.sessionPath === sessionPath)
+          if (idx !== -1) global.conns.splice(idx, 1)
+
+          if (!global.conns.find(c => c.sessionPath === sessionPath)) {
+            global.conns.push(sock)
+          }
+
+          if (m) {
+            await conn.sendMessage(m.chat, {
+              text: `✅ Sub-bot conectado: +${number}`
+            }, { quoted: m })
+          }
+
+          console.log(chalk.green(`Sub-bot conectado: +${number}`))
+        }
+
+        if (connection === "close") {
+          if ([DisconnectReason.loggedOut, DisconnectReason.forbidden].includes(statusCode)) {
+            cleanSession()
+            return
+          }
+
+          if (retryCount >= 5) {
+            cleanSession()
+            return
+          }
+
+          retryCount++
+          setTimeout(start, 1000 + Math.random() * 1000)
+        }
+      })
+
+    } catch (e) {
+      cleanSession()
+      if (m && conn) {
+        conn.sendMessage(m.chat, {
+          text: `❌ Error iniciando sub-bot\n${e.message}`
         }, { quoted: m })
-
-        console.log(chalk.green(`Subbot conectado: +${number}`))
       }
-
-      if (connection === "close") {
-        if ([DisconnectReason.loggedOut, DisconnectReason.forbidden].includes(reason)) {
-          clean()
-        }
-      }
-    })
-
-  } catch (e) {
-    clean()
-    m.reply(`❌ Error iniciando subbot:\n${e.message}`)
+    }
   }
+
+  start()
 }
