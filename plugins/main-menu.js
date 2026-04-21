@@ -48,15 +48,15 @@ ${cmds.map(c => `  ꕦ ${c}`).join('\n')}
             carita = '(◕‿◕✿) 🌙'
         }
 
-        let menuTexto = `𖤐 ❖ 𝐙𝐄𝐑𝐎 𝐓𝐖𝐎'𝐒 𝐌𝐄𝐍𝐔 ❖ 𖤐
+        let menuTexto = `𖤐 ❖ *WHOIS SEX MENU* ❖ 𖤐
 ❝ ¡Hola *${m.pushName}*, ${saludo}~! ${carita}
 Soy *${botname}* y este es mi menú,
-más te vale usarlo bien... hmph 💗 ❞
+más te vale usarlo bien... hmph 🤖 ❞
 ꙮ *Comandos:* ${totalCmds} disponibles
 ꙮ *Usuarios:* ${totalUsers} conocidos
 ꙮ *Registrados:* ${registeredUsers} darlings
 ${seccionesTexto}
-𖤐 *~Zero Two* 🌸 (´｡• ᵕ •｡\`)`.trim()
+𖤐 *~Whois Sex* 🤖 (´｡• ᵕ •｡\`)`.trim()
 
         const response = await fetch('https://causas-files.vercel.app/fl/9vs2.jpg')
         const buffer = await response.buffer()
@@ -65,7 +65,7 @@ ${seccionesTexto}
         await conn.sendMessage(m.chat, {
             document: buffer,
             mimetype: 'application/pdf',
-            fileName: `『 Zero Two Menu 』.pdf`,
+            fileName: `『 Whois Sex Menu 』.pdf`,
             fileLength: 2199023255552,
             pageCount: 2026,
             caption: menuTexto,
@@ -74,16 +74,16 @@ ${seccionesTexto}
                 isForwarded: true,
                 forwardingScore: 999,
                 externalAdReply: {
-                    title: '𝐙𝐄𝐑𝐎 𝐓𝐖𝐎',
-                    body: 'darling~ 💗',
+                    title: 'Whois Sex 🤖',
+                    body: 'Whois 🤖',
                     mediaType: 1,
                     thumbnail: base64,
                     renderLargerThumbnail: true,
-                    sourceUrl: 'https://whatsapp.com/channel/0029Vb6p68rF6smrH4Jeay3Y'
+                    sourceUrl: 'https://whatsapp.com/channel/0029Vb5oUp43LdQUVViHwc0m'
                 },
                 forwardedNewsletterMessageInfo: {
-                    newsletterJid: '120363404822730259@newsletter',
-                    newsletterName: '𝐙𝐄𝐑𝐎 𝐓𝐖𝐎',
+                    newsletterJid: '120363419947391620@newsletter',
+                    newsletterName: 'Whois Sex 🤖',
                     serverMessageId: -1
                 }
             }
