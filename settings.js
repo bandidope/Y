@@ -12,18 +12,8 @@ const scriptPath = fileURLToPath(import.meta.url)
 
 // ─── OWNERS ─────────────────────────────────────────────────────────────────
 global.owner = [
-    ['573229506110', 'Dev1', true],
-    ['51933000214',  'dev2', false],
-    ['51941658192',  'dev3', false],
-    ['5215911153853','dev4', false],
-    ['59175850453',  'Dev5', false],
-    ['584242773183', 'Dev6', false],
-    ['5493863447787','Dev7', false],
-    ['573107400303', 'Dev8', false],
-    ['573133374132', 'Dev9', false],
-    ['5214444854390','Dev10',false],
-    ['595987301197',   'Hola', false],
-    ['573135180876', 'duarte soporte', false]
+    ['51936994155', 'Dev1', true],
+    ['51904937048', 'duarte soporte', false]
 ]
 global.mods       = []
 global.suittag    = []
@@ -35,24 +25,24 @@ global.libreria   = 'Baileys'
 global.baileys    = 'V 6.7.17'
 global.vs         = '1.0.0'
 global.botVersion = '1.0.0'
-global.nameqr     = '✯ Zero Two ✰'
-global.namebot    = 'Z E R O  T W O'
+global.nameqr     = '✯ Whois Sex✰'
+global.namebot    = 'W h o i s  S e x'
 global.botName    = 'Zero Two'
 global.botname    = 'Zero Two'
 global.sessions   = './Sessions/Owner'
 global.jadi       = 'JadiBots'
 
 // ─── TEXTOS Y ETIQUETAS ─────────────────────────────────────────────────────
-global.packname   = '💗 𝒁𝒆𝒓𝒐 𝑻𝒘𝒐 💗'
-global.wm         = '💗◟𝓩𝓮𝓻𝓸 𝓣𝔀𝓸◞💗'
-global.author     = '© ZoreDevTeam'
-global.dev        = '© 🄿🄾🅆🄴🅁🄴🄳 ZoreDevTeam'
-global.botText    = '❖ 𝐙𝐄𝐑𝐎 𝐓𝐖𝐎 ❖ - power by ZoreDevTeam'
-global.botTag     = '✰ 𝐙𝐄𝐑𝐎 𝐓𝐖𝐎 ✰ (•̀ᴗ•́)و'
-global.devCredit  = '© ZoreDevTeam'
-global.authorCredit = '© ZoreDevTeam'
-global.etiqueta   = '💗 ZoreDevTeam 💗'
-global.textbot    = '🌸 Zero Two, una guerrera que transforma cada batalla en una danza mortal con su Franxx. 💗⚔️🌸'
+global.packname   = 'Whois Sex 🤖'
+global.wm         = 'Whois Sex 🤖'
+global.author     = '© Whois Yallico 🤖'
+global.dev        = '© Whois Yallico 🤖'
+global.botText    = 'Whois Sex 🤖'
+global.botTag     = 'Whois Sex 🤖'
+global.devCredit  = '© Whois Yallico 🤖'
+global.authorCredit = '© Whois Yallico 🤖'
+global.etiqueta   = '🤖 Whois Sex 🤖'
+global.textbot    = '🤖 Whois , un guerrero que transforma cada batalla en una trampa mortal con su espada. ⚔️'
 
 // ─── MONEDA / JUEGO ─────────────────────────────────────────────────────────
 global.moneda        = 'Stamps'
@@ -60,8 +50,8 @@ global.currencySymbol = 'Stamps'
 global.multiplier    = 60
 
 // ─── MENSAJES BIENVENIDA ────────────────────────────────────────────────────
-global.welcom1 = '¡Bienvenido a mi paraíso rosado! 💗\n✨ Soy Zero Two ✨\n🌸 Edita este mensaje con setwelcome 🌸'
-global.welcom2 = '💔 ¡Hasta la próxima, Darling! Gracias por estar aquí~\n🌸 ¡Espero verte pronto de nuevo! 🌸\n💗 Edita este mensaje con setbye 💗'
+global.welcom1 = '¡Bienvenido a mi paraíso ! \n✨ Soy Whois Sex ✨\n Edita este mensaje con setwelcome 🤖'
+global.welcom2 = '💔 ¡Hasta la próxima, Sex ! Gracias por estar aquí~\n ¡Espero verte pronto de nuevo! 🫶🏻\nEdita este mensaje con setbye 🤖'
 
 // ─── BANNER ─────────────────────────────────────────────────────────────────
 global.banner    = 'https://wallpapers.com/images/hd/zero-two-pictures-1j4mw86y6ncyfvj2.jpg'
@@ -73,10 +63,10 @@ global.catalogImage = null
 
 // ─── PREFIJO ────────────────────────────────────────────────────────────────
 global.prefix    = '.'
-global.botEmoji  = '💗'
-global.emoji     = '💗'
-global.emoji2    = '🌸'
-global.emoji3    = '💕'
+global.botEmoji  = '🤖'
+global.emoji     = '💤'
+global.emoji2    = '💀'
+global.emoji3    = '👾'
 
 // ─── LINKS ──────────────────────────────────────────────────────────────────
 global.groupLink     = 'https://chat.whatsapp.com/tu-link-grupo'
@@ -93,12 +83,12 @@ global.md        = global.gitHubRepo
 
 // ─── CANAL / NEWSLETTER ─────────────────────────────────────────────────────
 // rcanal = link del canal de WhatsApp
-global.rcanal         = 'https://whatsapp.com/channel/0029Vb6p68rF6smrH4Jeay3Y'
+global.rcanal         = 'https://whatsapp.com/channel/0029Vb5oUp43LdQUVViHwc0m'
 
 // JID del canal — formato: 120363XXXXXXXXX@newsletter
 // Cómo obtenerlo: WhatsApp Web → F12 → Network → busca "newsletter"
-global.newsletterJid  = '120363401404146384@newsletter'
-global.newsletterName = '💗 𝐙𝐄𝐑𝐎 𝐓𝐖𝐎 💗'
+global.newsletterJid  = '120363419947391620@newsletter'
+global.newsletterName = 'Whois Sex 🤖'
 
 // Compatibilidad con settings anterior
 global.newsChannels = { primary: global.newsletterJid }
